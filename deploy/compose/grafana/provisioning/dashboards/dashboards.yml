@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: agenticos
+    orgId: 1
+    folder: AgenticOS
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

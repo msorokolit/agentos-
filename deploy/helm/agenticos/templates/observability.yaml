@@ -1,0 +1,27 @@
+{{- /*
+  Optional ConfigMaps for Grafana dashboards and Prometheus alert rules.
+  Mount these into your existing Grafana / Prometheus deployment using
+  the standard sidecar pattern (kube-prometheus-stack picks up
+  ConfigMaps with `grafana_dashboard: "1"` automatically).
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticos-grafana-dashboards
+  labels:
+    {{- include "agenticos.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  agenticos-overview.json: |-
+{{ .Files.Get "files/agenticos-overview.json" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticos-prometheus-alerts
+  labels:
+    {{- include "agenticos.labels" . | nindent 4 }}
+    role: alert-rules
+data:
+  agenticos.rules: |-
+{{ .Files.Get "files/prometheus-alerts.yml" | indent 4 }}

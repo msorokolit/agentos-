@@ -126,6 +126,13 @@ services:
     replicas: 1
     port: 3000
 
+backup:
+  enabled: true
+  # Daily at 02:00 UTC by default.
+  schedule: "0 2 * * *"
+  retain: 14
+  storage: 50Gi
+
 ingress:
   enabled: true
   className: nginx

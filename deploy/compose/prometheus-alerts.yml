@@ -1,0 +1,63 @@
+groups:
+  - name: agenticos
+    interval: 30s
+    rules:
+      - alert: AgenticOSServiceDown
+        expr: up{job=~"api-gateway|agent-runtime|llm-gateway|tool-registry|knowledge-svc|memory-svc"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "AgenticOS service {{ $labels.job }} is down"
+          description: "Prometheus has not been able to scrape {{ $labels.job }} for 2 minutes."
+
+      - alert: AgenticOSHighRequestErrorRate
+        expr: |
+          sum by (job) (rate(http_requests_total{status=~"5..|4[03-9]"}[5m]))
+            /
+          sum by (job) (rate(http_requests_total[5m])) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} 4xx/5xx error rate >5% for 10m"
+
+      - alert: AgenticOSHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, job) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} p95 latency >2s"
+
+      - alert: AgenticOSLLMTimeoutsSpiking
+        expr: increase(llm_request_timeouts_total[15m]) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "LLM provider timeouts spiking ({{ $value }} in 15m)"
+
+      - alert: AgenticOSToolFailureRate
+        expr: |
+          sum by (tool) (rate(tool_invocations_total{ok="false"}[10m]))
+            /
+          clamp_min(sum by (tool) (rate(tool_invocations_total[10m])), 1e-6) > 0.2
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Tool {{ $labels.tool }} failing >20% of invocations"
+
+      - alert: AgenticOSAuditWriteLag
+        expr: increase(audit_events_dropped_total[10m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Audit events dropped — investigate NATS/DB"
+
+      - alert: AgenticOSPostgresDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Postgres exporter is down — DB metrics missing"

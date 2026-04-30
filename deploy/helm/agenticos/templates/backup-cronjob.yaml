@@ -1,0 +1,64 @@
+{{- if and (not .Values.postgres.external) .Values.backup.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agenticos-backups
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.global.storageClassName }}
+  storageClassName: {{ .Values.global.storageClassName | quote }}
+  {{- end }}
+  resources: { requests: { storage: {{ .Values.backup.storage }} } }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agenticos-pg-backup
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels: {{- include "agenticos.labels" . | nindent 12 }}
+            app.kubernetes.io/name: pg-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          containers:
+          - name: pg-dump
+            image: {{ .Values.postgres.image }}
+            command: ["sh", "-c"]
+            args:
+              - |
+                set -euo pipefail
+                ts="$(date -u +'%Y%m%dT%H%M%SZ')"
+                file="/backups/agenticos-${ts}.sql.gz"
+                echo "==> dumping ${POSTGRES_DB} to ${file}"
+                PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
+                  -h agenticos-postgres -U "${POSTGRES_USER}" "${POSTGRES_DB}" \
+                  --no-owner --no-privileges \
+                  | gzip -9 > "${file}"
+                # Retain last N (configurable) by mtime.
+                ls -1t /backups/agenticos-*.sql.gz | tail -n +$((RETAIN+1)) | xargs -r rm -f
+                echo "done. retained $(ls /backups/agenticos-*.sql.gz | wc -l) backups."
+            env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: agenticos-secrets, key: POSTGRES_PASSWORD } }
+            - name: RETAIN
+              value: {{ .Values.backup.retain | quote }}
+            volumeMounts:
+            - { name: backups, mountPath: /backups }
+          volumes:
+          - name: backups
+            persistentVolumeClaim: { claimName: agenticos-backups }
+{{- end -}}
