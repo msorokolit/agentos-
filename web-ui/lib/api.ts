@@ -155,6 +155,23 @@ export interface MessageRow {
   created_at: string;
 }
 
+export interface AuditRow {
+  id: string;
+  tenant_id: string | null;
+  workspace_id: string | null;
+  actor_id: string | null;
+  actor_email: string | null;
+  action: string;
+  resource_type: string | null;
+  resource_id: string | null;
+  decision: "allow" | "deny" | "error";
+  reason: string | null;
+  ip: string | null;
+  request_id: string | null;
+  payload: Record<string, unknown>;
+  created_at: string | null;
+}
+
 export interface RunResultBody {
   final_message: string;
   tool_calls: { id?: string; name: string; args: Record<string, unknown> }[];
@@ -434,6 +451,27 @@ export const api = {
       `/api/v1/workspaces/${workspaceId}/agents/${agentId}/run`,
       { method: "POST", body: JSON.stringify(body) },
     );
+  },
+  audit(
+    workspaceId: string,
+    opts: {
+      action?: string;
+      actor?: string;
+      decision?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<AuditRow[]> {
+    const u = new URL(
+      `/api/v1/workspaces/${workspaceId}/audit`,
+      "http://x",
+    );
+    Object.entries(opts).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") {
+        u.searchParams.set(k, String(v));
+      }
+    });
+    return http<AuditRow[]>(`${u.pathname}${u.search}`);
   },
 };
 

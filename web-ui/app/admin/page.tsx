@@ -49,13 +49,9 @@ export default function AdminPage() {
               </span>
             </li>
             <li style={{ color: colors.muted }}>
-              <span style={{ opacity: 0.6 }}>→ Tools (Phase 4)</span>
-            </li>
-            <li style={{ color: colors.muted }}>
-              <span style={{ opacity: 0.6 }}>→ Audit log (Phase 6)</span>
-            </li>
-            <li style={{ color: colors.muted }}>
-              <span style={{ opacity: 0.6 }}>→ Policy bundles (Phase 4)</span>
+              <span style={{ opacity: 0.8 }}>
+                Tools, agents, and audit live under each workspace
+              </span>
             </li>
           </ul>
         </div>

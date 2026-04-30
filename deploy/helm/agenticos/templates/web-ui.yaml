@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenticos-web-ui
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+    app.kubernetes.io/name: web-ui
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: web-ui
+  ports:
+    - name: http
+      port: {{ .Values.services.webUi.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenticos-web-ui
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+    app.kubernetes.io/name: web-ui
+spec:
+  replicas: {{ .Values.services.webUi.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: web-ui
+  template:
+    metadata:
+      labels: {{- include "agenticos.labels" . | nindent 8 }}
+        app.kubernetes.io/name: web-ui
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+      - name: web-ui
+        image: {{ include "agenticos.image" (dict "Values" .Values "image" .Values.services.webUi.image) }}
+        imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.services.webUi.port }}
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://{{ .Values.ingress.host }}"

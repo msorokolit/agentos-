@@ -1,0 +1,172 @@
+# Default values for the agenticos Helm chart.
+# Override anything via `helm install agenticos ./ -f my-values.yaml`.
+
+global:
+  image:
+    registry: ghcr.io
+    repository: msorokolit/agenticos
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  storageClassName: ""
+
+env: production
+secretKey: change-me-please-32-bytes-min!!
+embedDim: 768
+
+oidc:
+  issuer: ""           # e.g. https://idp.example.com/realms/agenticos
+  clientId: agenticos-web
+  clientSecret: ""
+  redirectUri: ""      # e.g. https://agenticos.example.com/api/v1/auth/oidc/callback
+
+postgres:
+  # Set external=true to bring your own Postgres + pgvector.
+  external: false
+  # When external=false we run a single Postgres pod backed by pgvector.
+  url: postgresql+psycopg://agenticos:agenticos@agenticos-postgres:5432/agenticos
+  user: agenticos
+  password: agenticos
+  database: agenticos
+  storage: 20Gi
+  image: pgvector/pgvector:pg16
+
+redis:
+  url: redis://agenticos-redis:6379/0
+  storage: 5Gi
+  image: redis:7-alpine
+
+nats:
+  url: nats://agenticos-nats:4222
+  image: nats:2.10-alpine
+
+minio:
+  enabled: true
+  endpoint: http://agenticos-minio:9000
+  accessKey: agenticos
+  secretKey: agenticos-minio
+  bucket: agenticos
+  storage: 20Gi
+  image: minio/minio:latest
+
+opa:
+  enabled: true
+  image: openpolicyagent/opa:0.68.0
+  url: http://agenticos-opa:8181
+
+ollama:
+  enabled: true
+  url: http://agenticos-ollama:11434
+  image: ollama/ollama:latest
+  storage: 50Gi
+  resources:
+    requests: { cpu: "500m", memory: "1Gi" }
+    limits:   { cpu: "4000m", memory: "16Gi" }
+  gpu: false  # set true and deploy a node selector if you have GPU
+
+services:
+  apiGateway:
+    name: api-gateway
+    image: api-gateway
+    replicas: 2
+    port: 8080
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  llmGateway:
+    name: llm-gateway
+    image: llm-gateway
+    replicas: 1
+    port: 8081
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  agentRuntime:
+    name: agent-runtime
+    image: agent-runtime
+    replicas: 2
+    port: 8082
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "2000m", memory: "2Gi" }
+  toolRegistry:
+    name: tool-registry
+    image: tool-registry
+    replicas: 1
+    port: 8083
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  knowledgeSvc:
+    name: knowledge-svc
+    image: knowledge-svc
+    replicas: 1
+    port: 8084
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "2000m", memory: "2Gi" }
+  memorySvc:
+    name: memory-svc
+    image: memory-svc
+    replicas: 1
+    port: 8085
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  worker:
+    name: worker
+    image: worker
+    replicas: 1
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  webUi:
+    name: web-ui
+    image: web-ui
+    replicas: 1
+    port: 3000
+
+ingress:
+  enabled: true
+  className: nginx
+  host: agenticos.local
+  tls:
+    enabled: true
+    secretName: agenticos-tls
+
+serviceAccount:
+  create: true
+  name: agenticos
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# Probes for our python services
+probes:
+  liveness:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 5
+  readiness:
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3

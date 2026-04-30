@@ -1,0 +1,8 @@
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.apiGateway "module" "api_gateway") }}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.llmGateway "module" "llm_gateway") }}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.agentRuntime "module" "agent_runtime") }}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.toolRegistry "module" "tool_registry") }}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.knowledgeSvc "module" "knowledge_svc") }}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.memorySvc "module" "memory_svc") }}
+{{- /* worker runs arq, so override its command */}}
+{{- include "agenticos.service" (dict "root" . "svc" .Values.services.worker "module" "worker" "cmd" (list "arq" "worker.main.WorkerSettings")) }}

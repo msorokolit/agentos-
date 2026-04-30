@@ -1,0 +1,43 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agenticos
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/websocket-services: "agenticos-{{ .Values.services.apiGateway.name }}"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+  - hosts: [{{ .Values.ingress.host | quote }}]
+    secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+  - host: {{ .Values.ingress.host | quote }}
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: agenticos-{{ .Values.services.apiGateway.name }}
+            port:
+              number: {{ .Values.services.apiGateway.port }}
+      - path: /healthz
+        pathType: Prefix
+        backend:
+          service:
+            name: agenticos-{{ .Values.services.apiGateway.name }}
+            port:
+              number: {{ .Values.services.apiGateway.port }}
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: agenticos-{{ .Values.services.webUi.name }}
+            port:
+              number: {{ .Values.services.webUi.port }}
+{{- end -}}

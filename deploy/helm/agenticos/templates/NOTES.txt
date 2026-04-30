@@ -1,0 +1,14 @@
+AgenticOS has been installed.
+
+Web UI:        https://{{ .Values.ingress.host }}
+API:           https://{{ .Values.ingress.host }}/api/v1
+OIDC issuer:   {{ .Values.oidc.issuer }}
+
+Next steps:
+  1. Confirm the migration job ran:
+       kubectl logs job/agenticos-migrate-{{ .Release.Revision }}
+  2. Pull a default model into Ollama (replace `qwen2.5:7b-instruct`):
+       kubectl exec -it sts/agenticos-ollama -- ollama pull qwen2.5:7b-instruct
+  3. Register it from the web UI under Admin → Models.
+
+For a full guide see docs/deployment.md in the repo.

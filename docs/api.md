@@ -248,8 +248,18 @@ Server → client (per-message JSON):
 
 Audit actions: `agent.create`, `agent.update`, `agent.delete`, `agent.run`.
 
-## Coming next (Phase 6)
+## Phase 6 — Audit explorer
 
-- Helm chart (`deploy/helm/agenticos/`) for Kubernetes
-- Backups, signed images, SBOMs, Trivy scans, container hardening
-- Audit log explorer in the web UI
+| Method | Path | Permission |
+|--------|------|------------|
+| GET | `/api/v1/workspaces/{id}/audit` | `admin:read` |
+
+Query params: `actor`, `action`, `decision`, `since`, `until`, `limit`,
+`offset`. Results are sorted descending by `created_at`.
+
+Web UI: `/workspaces/[id]/audit` — filterable table.
+
+## v1 complete
+
+All phases 0–6 shipped. Helm chart lives at `deploy/helm/agenticos`; see
+`docs/deployment.md` for installation.

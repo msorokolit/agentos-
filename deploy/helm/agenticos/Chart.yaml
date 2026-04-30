@@ -1,0 +1,16 @@
+apiVersion: v2
+name: agenticos
+description: Self-hosted Agentic OS for Enterprise — local-LLM-first.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/msorokolit/agentos-
+sources:
+  - https://github.com/msorokolit/agentos-
+maintainers:
+  - name: AgenticOS contributors
+keywords:
+  - ai
+  - llm
+  - agents
+  - enterprise

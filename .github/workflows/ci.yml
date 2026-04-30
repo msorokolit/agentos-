@@ -93,3 +93,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate docker-compose.yml
         run: docker compose -f docker-compose.yml config -q
+
+  helm-validate:
+    name: Helm chart lint + render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.1
+      - run: helm lint deploy/helm/agenticos
+      - run: helm template agenticos deploy/helm/agenticos > /tmp/render.yaml
+      - run: test -s /tmp/render.yaml
