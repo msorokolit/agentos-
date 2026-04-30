@@ -6,6 +6,10 @@ Whenever you add/alter a model here, generate a migration with::
     make makemigration M="describe change"
 
 Tables are intentionally minimal in Phase 0; later phases add more.
+
+Types are kept cross-dialect (``Uuid``, ``Enum(native_enum=False)``,
+``JSON``) so unit tests can run against SQLite while production runs on
+Postgres + pgvector.
 """
 
 from __future__ import annotations
@@ -23,16 +27,34 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
 )
 from sqlalchemy import (
     Enum as SAEnum,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
     return datetime.now(tz=UTC)
+
+
+# Use ``Uuid`` so SQLAlchemy picks PG UUID on PostgreSQL and CHAR(32) on
+# SQLite/MySQL. ``as_uuid=True`` ensures we always get python uuid.UUID.
+def _uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+
+def _uuid_fk(target: str, *, nullable: bool = False) -> Mapped[uuid.UUID]:
+    return mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(target, ondelete="CASCADE"),
+        nullable=nullable,
+    )
+
+
+WORKSPACE_ROLES = ("owner", "admin", "builder", "member", "viewer")
+AUDIT_DECISIONS = ("allow", "deny", "error")
 
 
 class Base(DeclarativeBase):
@@ -45,9 +67,7 @@ class Base(DeclarativeBase):
 class Tenant(Base):
     __tablename__ = "tenant"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -62,12 +82,8 @@ class Workspace(Base):
     __tablename__ = "workspace"
     __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_workspace_tenant_slug"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("tenant.id", ondelete="CASCADE"), nullable=False
-    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = _uuid_fk("tenant.id")
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
@@ -76,7 +92,9 @@ class Workspace(Base):
     )
 
     tenant: Mapped[Tenant] = relationship(back_populates="workspaces")
-    members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace")
+    members: Mapped[list[WorkspaceMember]] = relationship(
+        back_populates="workspace", cascade="all, delete-orphan"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -86,12 +104,8 @@ class User(Base):
     __tablename__ = "user_account"  # 'user' is reserved in postgres
     __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_user_tenant_email"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("tenant.id", ondelete="CASCADE"), nullable=False
-    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID] = _uuid_fk("tenant.id")
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     oidc_sub: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -109,24 +123,17 @@ class WorkspaceMember(Base):
     __tablename__ = "workspace_member"
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("workspace.id", ondelete="CASCADE"),
         primary_key=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True),
+        Uuid(as_uuid=True),
         ForeignKey("user_account.id", ondelete="CASCADE"),
         primary_key=True,
     )
     role: Mapped[str] = mapped_column(
-        SAEnum(
-            "owner",
-            "admin",
-            "builder",
-            "member",
-            "viewer",
-            name="workspace_role",
-        ),
+        SAEnum(*WORKSPACE_ROLES, name="workspace_role", native_enum=False),
         nullable=False,
         default="member",
     )
@@ -153,12 +160,10 @@ class AuditEventRow(Base):
         Index("ix_audit_actor_created", "actor_id", "created_at"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    tenant_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    workspace_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -167,7 +172,7 @@ class AuditEventRow(Base):
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     decision: Mapped[str] = mapped_column(
-        SAEnum("allow", "deny", "error", name="audit_decision"),
+        SAEnum(*AUDIT_DECISIONS, name="audit_decision", native_enum=False),
         nullable=False,
         default="allow",
     )
