@@ -151,6 +151,7 @@ async def invoke(
         workspace_id=body.workspace_id,
         args=body.args,
         settings=settings,
+        extra_allow_hosts=body.extra_allow_hosts,
     )
     return ToolInvokeResponse(
         ok=bool(out.get("ok", False)),

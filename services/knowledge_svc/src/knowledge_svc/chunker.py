@@ -33,6 +33,43 @@ def count_tokens(text: str) -> int:
     return len(_enc().encode(text))
 
 
+def chunk_pages(
+    pages: list[str],
+    *,
+    chunk_size: int = 400,
+    overlap: int = 60,
+    base_meta: dict[str, int | str] | None = None,
+) -> list[Chunk]:
+    """Like ``chunk_text`` but stamps every chunk's ``meta.page`` with a
+    1-based page index. Useful for PDFs so citations can surface page
+    numbers (PLAN §13 P3 acceptance).
+    """
+
+    out: list[Chunk] = []
+    counter = 0
+    for idx, page in enumerate(pages, start=1):
+        if not page or not page.strip():
+            continue
+        page_meta: dict[str, int | str] = dict(base_meta or {})
+        page_meta["page"] = idx
+        for ch in chunk_text(
+            page,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            base_meta=page_meta,
+        ):
+            out.append(
+                Chunk(
+                    ord=counter,
+                    text=ch.text,
+                    token_count=ch.token_count,
+                    meta=ch.meta,
+                )
+            )
+            counter += 1
+    return out
+
+
 def chunk_text(
     text: str,
     *,

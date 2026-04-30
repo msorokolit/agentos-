@@ -31,6 +31,7 @@ async def invoke_tool(
     workspace_id: UUID,
     args: dict[str, Any],
     settings: Any,
+    extra_allow_hosts: list[str] | None = None,
 ) -> dict[str, Any]:
     """Resolve a tool by id or name+workspace, validate args, invoke."""
 
@@ -62,7 +63,22 @@ async def invoke_tool(
         except jsonschema.ValidationError as exc:
             raise ValidationError(f"args invalid: {exc.message}") from exc
 
-    ctx: dict[str, Any] = {"settings": settings, "workspace_id": workspace_id}
+    # Merge per-workspace egress allow-list with the global one so the
+    # downstream http_get / invoke_http checks see a single combined view.
+    base_allow = list(getattr(settings, "egress_allow_hosts", None) or [])
+    workspace_allow = list(extra_allow_hosts or [])
+    merged_allow = sorted({h.strip() for h in base_allow + workspace_allow if h.strip()})
+
+    class _ScopedSettings:
+        def __getattr__(self, item: str) -> Any:
+            if item == "egress_allow_hosts":
+                return merged_allow
+            return getattr(settings, item)
+
+    ctx: dict[str, Any] = {
+        "settings": _ScopedSettings(),
+        "workspace_id": workspace_id,
+    }
 
     t0 = time.monotonic()
     try:

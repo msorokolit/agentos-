@@ -161,14 +161,26 @@ async def invoke_tool(
     request: Request,
     ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("tool:read"))],
     settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """Manual invocation from the UI / SDK (separate from agent-runtime path)."""
 
+    from agenticos_shared.models import Workspace
+
     principal, ws_id = ctx
+    # Workspace-scoped egress allow-list, merged with the gateway's global.
+    extra: list[str] = []
+    ws = db.get(Workspace, ws_id)
+    if ws and isinstance(ws.settings, dict):
+        raw = ws.settings.get("egress_allow_hosts") or []
+        if isinstance(raw, list):
+            extra = [str(h) for h in raw if isinstance(h, str | int)]
+
     payload = {
         "tool_id": str(tool_id),
         "workspace_id": str(ws_id),
         "args": body.get("args") or {},
+        "extra_allow_hosts": extra,
     }
     _, out = await _proxy("POST", "/invoke", settings, json=payload)
     await get_emitter().emit(

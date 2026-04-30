@@ -22,6 +22,7 @@ def _seed_tool(db, workspace_id) -> str:
     db.commit()
     return str(t.id)
 
+
 CHAT_NO_TOOLS = {
     "id": str(uuid4()),
     "alias": "chat-no-tools",

@@ -15,7 +15,7 @@ from agenticos_shared.models import Chunk as ChunkRow
 from agenticos_shared.models import Document
 from sqlalchemy.orm import Session
 
-from .chunker import chunk_text, count_tokens
+from .chunker import chunk_pages, chunk_text, count_tokens
 from .embedder import Embedder
 from .ingest import extract_text
 
@@ -50,11 +50,18 @@ async def ingest_document(
         # Pre-existing meta is preserved.
         doc.meta = {**(doc.meta or {}), **extracted.meta}
 
-        chunks = chunk_text(
-            extracted.text,
-            chunk_size=chunk_size_tokens,
-            overlap=chunk_overlap_tokens,
-        )
+        if extracted.pages:
+            chunks = chunk_pages(
+                extracted.pages,
+                chunk_size=chunk_size_tokens,
+                overlap=chunk_overlap_tokens,
+            )
+        else:
+            chunks = chunk_text(
+                extracted.text,
+                chunk_size=chunk_size_tokens,
+                overlap=chunk_overlap_tokens,
+            )
         if len(chunks) > max_chunks:
             chunks = chunks[:max_chunks]
 

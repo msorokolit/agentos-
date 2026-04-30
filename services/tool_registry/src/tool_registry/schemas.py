@@ -64,6 +64,10 @@ class ToolInvokeRequest(BaseModel):
     name: str | None = None
     workspace_id: UUID
     args: dict[str, Any] = Field(default_factory=dict)
+    # Workspace-level egress allow-list, merged with the gateway's
+    # ``EGRESS_ALLOW_HOSTS`` at invoke time. Wildcards (``*.example.com``)
+    # are honoured.
+    extra_allow_hosts: list[str] = Field(default_factory=list)
 
 
 class ToolInvokeResponse(BaseModel):

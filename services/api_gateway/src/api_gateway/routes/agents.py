@@ -332,6 +332,115 @@ async def publish_agent_version(
     }
 
 
+@router.post(
+    "/workspaces/{workspace_id}/agents/{agent_id}/tools/{tool_id}",
+    status_code=status.HTTP_201_CREATED,
+)
+async def bind_agent_tool(
+    agent_id: UUID,
+    tool_id: UUID,
+    request: Request,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:write"))],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """Bind a tool to an agent (PLAN §4 ``POST /agents/{id}/tools``)."""
+
+    principal, ws_id = ctx
+    a = db.get(Agent, agent_id)
+    if a is None or a.workspace_id != ws_id:
+        raise NotFoundError("agent not found")
+
+    # Verify the tool exists in this workspace (or is global) by hitting
+    # the join-table FK: we just insert if absent.
+    tids = list(a.tool_ids or [])
+    tid_str = str(tool_id)
+    if tid_str not in tids:
+        tids.append(tid_str)
+    a.tool_ids = tids
+    a.version = a.version + 1
+    a.updated_at = datetime.now(tz=UTC)
+    try:
+        _sync_tool_bindings(db, agent_id=a.id, tool_ids=tids)
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise NotFoundError(f"tool '{tool_id}' not found") from exc
+
+    db.add(
+        AgentVersion(
+            id=uuid4(),
+            agent_id=a.id,
+            version=a.version,
+            created_by=principal.user_id,
+            snapshot=_agent_out(a),
+        )
+    )
+    await get_emitter().emit(
+        AuditEvent(
+            tenant_id=principal.tenant_id,
+            workspace_id=ws_id,
+            actor_id=principal.user_id,
+            actor_email=principal.email,
+            action="agent.tool.bind",
+            resource_type="agent",
+            resource_id=str(agent_id),
+            payload={"tool_id": tid_str},
+            ip=request.client.host if request.client else None,
+        )
+    )
+    return _agent_out(a)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/agents/{agent_id}/tools/{tool_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unbind_agent_tool(
+    agent_id: UUID,
+    tool_id: UUID,
+    request: Request,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:write"))],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    principal, ws_id = ctx
+    a = db.get(Agent, agent_id)
+    if a is None or a.workspace_id != ws_id:
+        raise NotFoundError("agent not found")
+
+    tid_str = str(tool_id)
+    tids = list(a.tool_ids or [])
+    if tid_str not in tids:
+        raise NotFoundError("tool not bound to this agent")
+    tids = [t for t in tids if t != tid_str]
+    a.tool_ids = tids
+    a.version = a.version + 1
+    a.updated_at = datetime.now(tz=UTC)
+    _sync_tool_bindings(db, agent_id=a.id, tool_ids=tids)
+
+    db.add(
+        AgentVersion(
+            id=uuid4(),
+            agent_id=a.id,
+            version=a.version,
+            created_by=principal.user_id,
+            snapshot=_agent_out(a),
+        )
+    )
+    await get_emitter().emit(
+        AuditEvent(
+            tenant_id=principal.tenant_id,
+            workspace_id=ws_id,
+            actor_id=principal.user_id,
+            actor_email=principal.email,
+            action="agent.tool.unbind",
+            resource_type="agent",
+            resource_id=str(agent_id),
+            payload={"tool_id": tid_str},
+            ip=request.client.host if request.client else None,
+        )
+    )
+
+
 @router.get("/workspaces/{workspace_id}/agents/{agent_id}/versions")
 def list_agent_versions(
     agent_id: UUID,
