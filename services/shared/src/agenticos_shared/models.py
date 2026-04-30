@@ -61,6 +61,7 @@ MODEL_KINDS = ("chat", "embedding")
 DOCUMENT_STATUSES = ("pending", "parsing", "embedding", "ready", "failed")
 TOOL_KINDS = ("builtin", "http", "openapi", "mcp")
 MESSAGE_ROLES = ("system", "user", "assistant", "tool")
+MEMORY_SCOPES = ("user", "agent", "session", "workspace")
 
 
 class Base(DeclarativeBase):
@@ -391,6 +392,48 @@ class Message(Base):
     tokens_out: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Memory (Phase 5/6)
+# ---------------------------------------------------------------------------
+class MemoryItem(Base):
+    """Per-(workspace, scope, key) memory item.
+
+    Scope values:
+      * ``user``     — bound to a user_id
+      * ``agent``    — bound to an agent_id
+      * ``session``  — bound to a session_id
+      * ``workspace``— shared across the workspace
+
+    ``embedding`` is JSON cross-dialect; on PostgreSQL the migration
+    upgrades it to ``vector(EMBED_DIM)`` (best-effort).
+    """
+
+    __tablename__ = "memory_item"
+    __table_args__ = (
+        Index("ix_memory_workspace_scope", "workspace_id", "scope"),
+        Index("ix_memory_owner", "scope", "owner_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    scope: Mapped[str] = mapped_column(
+        SAEnum(*MEMORY_SCOPES, name="memory_scope", native_enum=False),
+        nullable=False,
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
