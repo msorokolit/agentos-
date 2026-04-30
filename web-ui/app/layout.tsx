@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { AppShell } from "../components/AppShell";
 
 export const metadata: Metadata = {
   title: "AgenticOS",
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           color: "#e7e9ee",
         }}
       >
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
