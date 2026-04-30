@@ -1,0 +1,58 @@
+{
+  "realm": "agenticos",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "verifyEmail": false,
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@agenticos.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "alice", "temporary": false }
+      ],
+      "realmRoles": ["default-roles-agenticos"]
+    },
+    {
+      "username": "bob",
+      "email": "bob@agenticos.local",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Bob",
+      "lastName": "Builder",
+      "credentials": [
+        { "type": "password", "value": "bob", "temporary": false }
+      ],
+      "realmRoles": ["default-roles-agenticos"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "agenticos-web",
+      "name": "AgenticOS Web",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "dev-client-secret",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/api/v1/auth/oidc/callback",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": ["http://localhost:3000", "http://localhost:8080"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      }
+    }
+  ]
+}

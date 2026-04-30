@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: api-gateway
+    static_configs: [{targets: ["api-gateway:8080"]}]
+    metrics_path: /metrics
+  - job_name: agent-runtime
+    static_configs: [{targets: ["agent-runtime:8082"]}]
+    metrics_path: /metrics
+  - job_name: llm-gateway
+    static_configs: [{targets: ["llm-gateway:8081"]}]
+    metrics_path: /metrics
+  - job_name: tool-registry
+    static_configs: [{targets: ["tool-registry:8083"]}]
+    metrics_path: /metrics
+  - job_name: knowledge-svc
+    static_configs: [{targets: ["knowledge-svc:8084"]}]
+    metrics_path: /metrics
+  - job_name: memory-svc
+    static_configs: [{targets: ["memory-svc:8085"]}]
+    metrics_path: /metrics
