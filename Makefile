@@ -112,5 +112,5 @@ makemigration: ## Autogenerate a new migration. Usage: make makemigration M="mes
 	docker compose run --rm api-gateway alembic revision --autogenerate -m "$(M)"
 
 .PHONY: seed
-seed: ## Seed dev data.
-	docker compose run --rm api-gateway python -m scripts.seed
+seed: ## Seed dev data (acme tenant + default workspace + alice/bob).
+	docker compose run --rm -w /app api-gateway python -m scripts.seed

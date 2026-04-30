@@ -2,7 +2,7 @@
 
 > Self-hosted, on-prem agent platform that runs entirely on **local LLMs**.
 >
-> Status: **Phase 0 — Foundations** complete. Next: Phase 1 (AuthN/AuthZ + Workspaces).
+> Status: **Phase 1 — AuthN/AuthZ + Workspaces** complete. Next: Phase 2 (LLM Gateway + models admin).
 
 ---
 
@@ -126,8 +126,8 @@ See [`PLAN`](https://github.com/msorokolit/agentos-/blob/main/docs/architecture.
 | Phase | Goal | Status |
 |-------|------|--------|
 | **0** | Repo skeleton, shared lib, service stubs, compose stack, migrations, CI | ✅ done |
-| 1 | OIDC + RBAC + workspaces + audit middleware | ⏳ next |
-| 2 | LLM gateway + models admin (Ollama/vLLM) | — |
+| **1** | OIDC + RBAC + workspaces + audit emitter | ✅ done |
+| 2 | LLM gateway + models admin (Ollama/vLLM) | ⏳ next |
 | 3 | Knowledge + RAG | — |
 | 4 | Tool registry + Policy (OPA) | — |
 | 5 | Agent runtime + chat (LangGraph ReAct, streaming) | — |
