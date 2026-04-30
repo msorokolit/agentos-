@@ -28,7 +28,7 @@ from ..auth.oidc import (
     random_token,
     verify_id_token,
 )
-from ..auth.session import SessionPayload, encode_session
+from ..auth.session import SessionPayload, decode_session, encode_session
 from ..db import get_db
 from ..schemas import LoginResponse
 from ..settings import Settings, get_settings
@@ -209,6 +209,66 @@ async def oidc_callback(
         pass
 
     return redirect
+
+
+@router.post("/token/refresh")
+async def refresh(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Mint a fresh session cookie for an already-authenticated caller.
+
+    Useful for SPAs that want to keep a long-running tab alive without
+    bouncing through OIDC again. We require a *valid* (non-expired)
+    session to perform the rotation; clients holding an expired cookie
+    must restart the OIDC flow.
+    """
+
+    cookie = request.cookies.get(settings.session_cookie_name)
+    if not cookie:
+        raise UnauthorizedError("not authenticated")
+    payload = decode_session(cookie, secret=settings.secret_key)
+    if payload.is_expired():
+        raise UnauthorizedError("session expired")
+
+    now = int(time.time())
+    fresh = SessionPayload(
+        user_id=payload.user_id,
+        tenant_id=payload.tenant_id,
+        email=payload.email,
+        display_name=payload.display_name,
+        issued_at=now,
+        expires_at=now + settings.session_ttl_seconds,
+    )
+    token = encode_session(fresh, secret=settings.secret_key)
+
+    r = Response(
+        status_code=status.HTTP_200_OK, content='{"refreshed":true}', media_type="application/json"
+    )
+    r.set_cookie(
+        settings.session_cookie_name,
+        token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        max_age=settings.session_ttl_seconds,
+        path="/",
+    )
+    try:
+        await get_emitter().emit(
+            AuditEvent(
+                tenant_id=payload.tenant_id,
+                actor_id=payload.user_id,
+                actor_email=payload.email,
+                action="auth.refresh",
+                resource_type="user",
+                resource_id=str(payload.user_id),
+                ip=request.client.host if request.client else None,
+            )
+        )
+    except Exception:
+        pass
+    return r
 
 
 @router.post("/logout")

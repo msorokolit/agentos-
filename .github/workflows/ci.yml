@@ -38,6 +38,12 @@ jobs:
       - name: Ruff format check
         run: ruff format --check services/ scripts/ tests/ sdk/python/agenticos/
 
+      - name: Mypy (shared lib — hard gate)
+        run: mypy services/shared/src
+
+      - name: Mypy (rest of the tree — non-blocking, report-only)
+        run: mypy services/ || true
+
       - name: Pytest (unit)
         run: pytest services/ -q --cov=services --cov-report=xml
 

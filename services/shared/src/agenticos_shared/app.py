@@ -61,14 +61,14 @@ def make_app(
         for cb in on_startup:
             res = cb(app)
             if hasattr(res, "__await__"):
-                await res  # type: ignore[func-returns-value]
+                await res
         try:
             yield
         finally:
             for cb in on_shutdown:
                 res = cb(app)
                 if hasattr(res, "__await__"):
-                    await res  # type: ignore[func-returns-value]
+                    await res
             log.info("service.stopped", service=service_name)
 
     app = FastAPI(

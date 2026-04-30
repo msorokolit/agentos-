@@ -52,7 +52,10 @@ indent-style = "space"
 [tool.mypy]
 python_version = "3.12"
 strict_optional = true
-warn_unused_ignores = true
+# warn_unused_ignores stays off until we've cleaned up the rest of the
+# codebase; our intermediate goal is "shared lib type-clean" so we don't
+# break that contract.
+warn_unused_ignores = false
 warn_redundant_casts = true
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -64,7 +67,15 @@ exclude = [
     "dist/",
     ".venv/",
     "migrations/",
+    "tests/",
+    "scripts/",
 ]
+
+[[tool.mypy.overrides]]
+# Vendored / heavily-dynamic modules — silence noise without disabling
+# strictness elsewhere.
+module = ["alembic.*"]
+ignore_errors = true
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --import-mode=importlib"

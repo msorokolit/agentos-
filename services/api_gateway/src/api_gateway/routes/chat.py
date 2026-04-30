@@ -9,6 +9,7 @@ clients that can't pass cookies on WS handshake.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Annotated
 from uuid import UUID
@@ -122,6 +123,47 @@ async def chat_ws(
 
     runtime_url = settings.agent_runtime_url.rstrip("/")
 
+    # ``cancel_event`` is set by a concurrent reader whenever the client
+    # sends ``{"type":"cancel"}``. The stream-forwarding coroutine polls
+    # it between SSE lines and stops promptly.
+    cancel_event = asyncio.Event()
+    stream_task: asyncio.Task | None = None
+
+    async def _stream_one(user_text: str) -> None:
+        payload = {
+            "agent_id": str(agent.id),
+            "session_id": str(session.id),
+            "user_message": user_text,
+        }
+        try:
+            async with (
+                httpx.AsyncClient(timeout=600.0) as c,
+                c.stream("POST", f"{runtime_url}/run/stream", json=payload) as r,
+            ):
+                async for line in r.aiter_lines():
+                    if cancel_event.is_set():
+                        await ws.send_json(
+                            {"type": "cancelled", "payload": {"reason": "client_cancel"}}
+                        )
+                        return
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[len("data: ") :]
+                    if data == "[DONE]":
+                        await ws.send_json({"type": "done", "payload": {}})
+                        return
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    await ws.send_json(event)
+        except asyncio.CancelledError:
+            await ws.send_json({"type": "cancelled", "payload": {"reason": "client_cancel"}})
+            raise
+        except Exception as exc:
+            log.warning("ws_stream_failed", error=str(exc))
+            await ws.send_json({"type": "error", "payload": {"message": str(exc)[:300]}})
+
     try:
         while True:
             try:
@@ -137,32 +179,31 @@ async def chat_ws(
                 user_text = (msg.get("content") or "").strip()
                 if not user_text:
                     continue
-                payload = {
-                    "agent_id": str(agent.id),
-                    "session_id": str(session.id),
-                    "user_message": user_text,
-                }
-                try:
-                    async with (
-                        httpx.AsyncClient(timeout=600.0) as c,
-                        c.stream("POST", f"{runtime_url}/run/stream", json=payload) as r,
-                    ):
-                        async for line in r.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
-                            data = line[len("data: ") :]
-                            if data == "[DONE]":
-                                await ws.send_json({"type": "done", "payload": {}})
-                                break
-                            try:
-                                event = json.loads(data)
-                            except json.JSONDecodeError:
-                                continue
-                            await ws.send_json(event)
-                except Exception as exc:
-                    log.warning("ws_stream_failed", error=str(exc))
-                    await ws.send_json({"type": "error", "payload": {"message": str(exc)[:300]}})
+                # Starve any in-flight stream so we don't interleave outputs.
+                if stream_task is not None and not stream_task.done():
+                    cancel_event.set()
+                    stream_task.cancel()
+                    try:
+                        await stream_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                cancel_event = asyncio.Event()
+                stream_task = asyncio.create_task(_stream_one(user_text))
+            elif kind == "cancel":
+                if stream_task is not None and not stream_task.done():
+                    cancel_event.set()
+                    stream_task.cancel()
+                    try:
+                        await stream_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                else:
+                    await ws.send_json(
+                        {"type": "cancelled", "payload": {"reason": "no_active_run"}}
+                    )
             elif kind == "ping":
                 await ws.send_json({"type": "pong", "payload": {}})
     except WebSocketDisconnect:
+        if stream_task is not None and not stream_task.done():
+            stream_task.cancel()
         return

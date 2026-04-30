@@ -14,6 +14,7 @@ from .db import init_db
 from .error_handlers import install_exception_handlers
 from .job_queue import init_queue, shutdown_queue
 from .rate_limit import RateLimitMiddleware, make_bucket
+from .routes.admin import router as admin_router
 from .routes.admin_models import router as admin_models_router
 from .routes.agents import router as agents_router
 from .routes.api_keys import router as api_keys_router
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     api.include_router(audit_router)
     api.include_router(api_keys_router)
     api.include_router(policies_router)
+    api.include_router(admin_router)
     app.include_router(api)
     return app
 

@@ -98,7 +98,10 @@ def app(settings):
     from importlib import reload
 
     import api_gateway.main as gw_main
+    from api_gateway import model_capabilities as mc
 
+    # Drop any cached model registry from previous tests.
+    mc._clear_cache()
     reload(gw_main)
     return gw_main.app
 

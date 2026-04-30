@@ -16,6 +16,7 @@ from agenticos_shared.errors import (
     AgenticOSError,
     ConflictError,
     NotFoundError,
+    ValidationError,
 )
 from agenticos_shared.models import Agent, AgentVersion, Message, Session
 from fastapi import APIRouter, Depends, Request, status
@@ -24,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from ..audit_bus import get_emitter
-from ..auth.deps import require_workspace_role
+from ..auth.deps import current_principal, require_workspace_role
 from ..db import get_db
 from ..job_queue import enqueue
 from ..model_capabilities import ensure_model_supports
@@ -238,6 +239,68 @@ async def delete_agent(
     )
 
 
+@router.post(
+    "/workspaces/{workspace_id}/agents/{agent_id}/versions",
+    status_code=status.HTTP_201_CREATED,
+)
+async def publish_agent_version(
+    agent_id: UUID,
+    body: dict,
+    request: Request,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:write"))],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """Explicitly publish a new immutable version of an agent.
+
+    Snapshots the *current* agent state under a fresh version number and
+    records optional release notes in ``snapshot.notes``. Useful when an
+    operator wants a stable cut-line independent of the auto-bump that
+    happens on every PATCH.
+    """
+
+    principal, ws_id = ctx
+    a = db.get(Agent, agent_id)
+    if a is None or a.workspace_id != ws_id:
+        raise NotFoundError("agent not found")
+
+    a.version = a.version + 1
+    a.updated_at = datetime.now(tz=UTC)
+
+    snapshot = _agent_out(a)
+    notes = (body or {}).get("notes")
+    if notes:
+        snapshot["notes"] = str(notes)[:4096]
+    version = AgentVersion(
+        id=uuid4(),
+        agent_id=a.id,
+        version=a.version,
+        created_by=principal.user_id,
+        snapshot=snapshot,
+    )
+    db.add(version)
+
+    await get_emitter().emit(
+        AuditEvent(
+            tenant_id=principal.tenant_id,
+            workspace_id=ws_id,
+            actor_id=principal.user_id,
+            actor_email=principal.email,
+            action="agent.publish",
+            resource_type="agent",
+            resource_id=str(agent_id),
+            payload={"version": a.version, "notes": bool(notes)},
+            ip=request.client.host if request.client else None,
+        )
+    )
+    return {
+        "id": str(version.id),
+        "agent_id": str(a.id),
+        "version": a.version,
+        "snapshot": snapshot,
+        "created_at": version.created_at.isoformat() if version.created_at else None,
+    }
+
+
 @router.get("/workspaces/{workspace_id}/agents/{agent_id}/versions")
 def list_agent_versions(
     agent_id: UUID,
@@ -273,6 +336,52 @@ def list_agent_versions(
 # ---------------------------------------------------------------------------
 # Sessions + messages
 # ---------------------------------------------------------------------------
+@router.post("/sessions", status_code=status.HTTP_201_CREATED)
+def create_session_top_level(
+    body: dict,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """Convenience top-level session creator (PLAN §4: ``POST /sessions``).
+
+    Body: ``{"agent_id": "<uuid>", "title": "..."?}``.
+    Resolves the workspace from the agent and enforces ``agent:read`` on
+    that workspace inline (since the path doesn't carry a workspace_id).
+    """
+
+    agent_id_raw = (body or {}).get("agent_id")
+    if not agent_id_raw:
+        raise ValidationError("agent_id is required")
+    try:
+        agent_id = UUID(str(agent_id_raw))
+    except ValueError as exc:
+        raise ValidationError(f"agent_id must be a UUID: {exc}") from exc
+
+    a = db.get(Agent, agent_id)
+    if a is None:
+        raise NotFoundError("agent not found")
+    if a.workspace_id not in principal.workspace_ids and "superuser" not in principal.roles:
+        raise NotFoundError("agent not found")  # don't leak existence
+
+    s = Session(
+        id=uuid4(),
+        workspace_id=a.workspace_id,
+        agent_id=agent_id,
+        user_id=principal.user_id,
+        title=body.get("title") if isinstance(body, dict) else None,
+        meta={},
+    )
+    db.add(s)
+    db.flush()
+    return {
+        "id": str(s.id),
+        "agent_id": str(agent_id),
+        "workspace_id": str(a.workspace_id),
+        "title": s.title,
+        "created_at": s.created_at.isoformat(),
+    }
+
+
 @router.post(
     "/workspaces/{workspace_id}/agents/{agent_id}/sessions",
     status_code=status.HTTP_201_CREATED,
