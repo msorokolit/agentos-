@@ -44,6 +44,9 @@ jobs:
       - name: Pytest (integration, in-process)
         run: pytest tests/integration -q
 
+      - name: Pytest (eval scorer)
+        run: pytest tests/evals -q
+
       - name: Validate Alembic migration generates SQL
         env:
           DATABASE_URL: postgresql+psycopg://x:x@localhost:5432/x

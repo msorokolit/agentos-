@@ -48,3 +48,21 @@ def init_otel(
 
 def get_tracer(name: str = "agenticos") -> trace.Tracer:
     return trace.get_tracer(name)
+
+
+def instrument_fastapi(app, *, service_name: str | None = None) -> None:
+    """Attach OTel auto-instrumentation to a FastAPI app + httpx + sqlalchemy.
+
+    No-op when OTel was never initialised (i.e. no exporter configured).
+    """
+
+    if not _INITIALISED:
+        return
+    try:
+        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+        FastAPIInstrumentor.instrument_app(app)
+        HTTPXClientInstrumentor().instrument()
+    except Exception:
+        pass

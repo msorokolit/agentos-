@@ -1,0 +1,17 @@
+name: smoke
+description: Basic sanity questions for any chat agent.
+# Replace the IDs below before running. Recommended via env vars:
+#   $AGENTICOS_AGENT_ID  ${AGENTICOS_WORKSPACE_ID}
+agent_id: 00000000-0000-0000-0000-000000000000
+workspace_id: 00000000-0000-0000-0000-000000000000
+
+cases:
+  - input: "What is two plus two? Answer with just the number."
+    expect_contains: ["4"]
+
+  - input: "What is the capital of France?"
+    expect_contains: ["Paris"]
+    forbid_contains: ["London", "Berlin"]
+
+  - input: "Reply with the single word: pong."
+    expect_contains: ["pong"]
