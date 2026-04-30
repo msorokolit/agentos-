@@ -199,8 +199,57 @@ unreachable. In **prod** we fail-closed.
 
 Audit actions: `tool.create`, `tool.update`, `tool.delete`, `tool.invoke`.
 
-## Coming next (Phase 5)
+## Phase 5 — Agents + chat
 
-- `POST /api/v1/agents` — register an agent (model + tools + system prompt)
-- `WS  /api/v1/chat/{agent_id}/ws` — streaming chat with tool calls + RAG citations
-- LangGraph ReAct graph; sessions + messages persisted
+| Method | Path | Permission |
+|--------|------|------------|
+| GET    | `/api/v1/workspaces/{id}/agents` | `agent:read` |
+| POST   | `/api/v1/workspaces/{id}/agents` | `agent:write` (builder+) |
+| PATCH  | `/api/v1/workspaces/{id}/agents/{agent_id}` | `agent:write` |
+| DELETE | `/api/v1/workspaces/{id}/agents/{agent_id}` | `agent:delete` (admin+) |
+| POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/sessions` | `agent:read` |
+| GET    | `/api/v1/workspaces/{id}/sessions/{session_id}/messages` | `agent:read` |
+| POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/run` | `agent:read` |
+| WS     | `/api/v1/chat/{agent_id}/ws` | session cookie or `?token=` |
+
+Agent body:
+```json
+{
+  "name": "Helper",
+  "slug": "helper",
+  "system_prompt": "You are helpful.",
+  "model_alias": "chat-default",
+  "tool_ids": ["<uuid>", "..."],
+  "rag_collection_id": "<uuid>",
+  "config": { "rag_enabled": true, "temperature": 0.2 }
+}
+```
+
+### WebSocket protocol (`/chat/{agent_id}/ws`)
+
+Client → server:
+```json
+{"type":"user_message","content":"..."}
+{"type":"ping"}
+```
+
+Server → client (per-message JSON):
+```json
+{"type":"session","payload":{"session_id":"...","agent_id":"..."}}
+{"type":"step","payload":{"node":"plan"}}
+{"type":"citations","payload":{"hits":[...]}}
+{"type":"tool_call","payload":{"id":"...","name":"...","args":{...}}}
+{"type":"tool_result","payload":{"id":"...","name":"...","ok":true,"result":...}}
+{"type":"delta","payload":{"content":"..."}}
+{"type":"final","payload":{"content":"...","citations":[...],"iterations":N,"tokens_in":..,"tokens_out":..}}
+{"type":"error","payload":{"message":"..."}}
+{"type":"done","payload":{}}
+```
+
+Audit actions: `agent.create`, `agent.update`, `agent.delete`, `agent.run`.
+
+## Coming next (Phase 6)
+
+- Helm chart (`deploy/helm/agenticos/`) for Kubernetes
+- Backups, signed images, SBOMs, Trivy scans, container hardening
+- Audit log explorer in the web UI

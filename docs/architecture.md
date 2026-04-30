@@ -2,7 +2,7 @@
 
 > Self-hosted, on-prem agent platform that runs entirely on **local LLMs**.
 >
-> Status: **Phase 4 — Tool registry + Policy** complete. Next: Phase 5 (Agent runtime + chat).
+> Status: **Phase 5 — Agent runtime + chat (ReAct, streaming)** complete. Next: Phase 6 (Helm + hardening).
 
 ---
 
@@ -130,8 +130,8 @@ See [`PLAN`](https://github.com/msorokolit/agentos-/blob/main/docs/architecture.
 | **2** | LLM gateway + models admin (Ollama/vLLM/openai-compat) + quotas | ✅ done |
 | **3** | Knowledge ingest + hybrid search (pgvector + tsvector + RRF) | ✅ done |
 | **4** | Tool registry + OPA policy (built-ins, HTTP/OpenAPI/MCP) | ✅ done |
-| 5 | Agent runtime + chat (LangGraph ReAct, streaming) | ⏳ next |
-| 6 | Hardening + Helm chart | — |
+| **5** | Agent runtime + ReAct streaming chat (WS, citations, tool calls) | ✅ done |
+| 6 | Hardening + Helm chart | ⏳ next |
 | 7 (v1.5) | Code sandbox, multi-agent, SAML/SCIM, evals, air-gapped bundler | — |
 
 ## 8. Security posture

@@ -117,6 +117,56 @@ export interface ToolInvokeResponse {
   latency_ms?: number;
 }
 
+export interface AgentRow {
+  id: string;
+  workspace_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  system_prompt: string;
+  model_alias: string;
+  graph_kind: string;
+  config: Record<string, unknown>;
+  tool_ids: string[];
+  rag_collection_id: string | null;
+  version: number;
+  enabled: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SessionRow {
+  id: string;
+  agent_id: string;
+  workspace_id: string;
+  title: string | null;
+  created_at: string;
+}
+
+export interface MessageRow {
+  id: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_call: Record<string, unknown> | null;
+  citations: Record<string, unknown>[];
+  tokens_in: number;
+  tokens_out: number;
+  latency_ms: number;
+  created_at: string;
+}
+
+export interface RunResultBody {
+  final_message: string;
+  tool_calls: { id?: string; name: string; args: Record<string, unknown> }[];
+  tool_results: { id?: string; name: string; ok: boolean; result?: unknown; error?: string | null }[];
+  citations: Record<string, unknown>[];
+  iterations: number;
+  tokens_in: number;
+  tokens_out: number;
+  error: string | null;
+  session_id?: string;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData =
     typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -323,4 +373,73 @@ export const api = {
       { method: "POST", body: JSON.stringify({ args }) },
     );
   },
+  // ----- Agents -----
+  listAgents(workspaceId: string): Promise<AgentRow[]> {
+    return http<AgentRow[]>(`/api/v1/workspaces/${workspaceId}/agents`);
+  },
+  createAgent(
+    workspaceId: string,
+    body: {
+      name: string;
+      slug: string;
+      description?: string;
+      system_prompt?: string;
+      model_alias: string;
+      tool_ids?: string[];
+      rag_collection_id?: string | null;
+      config?: Record<string, unknown>;
+    },
+  ): Promise<AgentRow> {
+    return http<AgentRow>(`/api/v1/workspaces/${workspaceId}/agents`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  updateAgent(
+    workspaceId: string,
+    agentId: string,
+    body: Partial<AgentRow>,
+  ): Promise<AgentRow> {
+    return http<AgentRow>(`/api/v1/workspaces/${workspaceId}/agents/${agentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+  deleteAgent(workspaceId: string, agentId: string): Promise<void> {
+    return http<void>(`/api/v1/workspaces/${workspaceId}/agents/${agentId}`, {
+      method: "DELETE",
+    });
+  },
+  createSession(
+    workspaceId: string,
+    agentId: string,
+    body: { title?: string } = {},
+  ): Promise<SessionRow> {
+    return http<SessionRow>(
+      `/api/v1/workspaces/${workspaceId}/agents/${agentId}/sessions`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  listSessionMessages(workspaceId: string, sessionId: string): Promise<MessageRow[]> {
+    return http<MessageRow[]>(
+      `/api/v1/workspaces/${workspaceId}/sessions/${sessionId}/messages`,
+    );
+  },
+  runAgent(
+    workspaceId: string,
+    agentId: string,
+    body: { user_message: string; session_id?: string },
+  ): Promise<RunResultBody> {
+    return http<RunResultBody>(
+      `/api/v1/workspaces/${workspaceId}/agents/${agentId}/run`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
 };
+
+export function chatWebSocketUrl(agentId: string, sessionId?: string): string {
+  const base = API_URL.replace(/^http/, "ws");
+  const u = new URL(`${base}/api/v1/chat/${agentId}/ws`);
+  if (sessionId) u.searchParams.set("session_id", sessionId);
+  return u.toString();
+}

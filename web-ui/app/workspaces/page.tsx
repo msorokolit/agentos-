@@ -100,6 +100,9 @@ export default function WorkspacesPage() {
                   <div style={{ color: colors.muted, fontSize: 13 }}>{w.slug}</div>
                 </div>
                 <span style={tag}>{new Date(w.created_at).toLocaleDateString()}</span>
+                <Link href={`/workspaces/${w.id}/agents`} style={{ color: colors.accent }}>
+                  Agents →
+                </Link>
                 <Link href={`/workspaces/${w.id}/knowledge`} style={{ color: colors.accent }}>
                   Knowledge →
                 </Link>
