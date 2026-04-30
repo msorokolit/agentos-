@@ -1,0 +1,125 @@
+# Production-leaning Helm values for AgenticOS.
+#
+# Start with this file and override:
+#   * ingress.host
+#   * oidc.{issuer,clientId,clientSecret,redirectUri}
+#   * secretKey + minio.secretKey + postgres.password (use sealed-secrets/
+#     external-secrets-operator in real deployments).
+#
+# Install:
+#   helm install agenticos ./deploy/helm/agenticos \
+#     -f ./deploy/helm/agenticos/values-prod.yaml \
+#     --set ingress.host=agenticos.example.com \
+#     --set oidc.issuer=https://idp.example.com/realms/agenticos \
+#     --set oidc.clientSecret=$IDP_SECRET
+
+global:
+  image:
+    registry: ghcr.io
+    repository: msorokolit/agenticos
+    pullPolicy: IfNotPresent
+  storageClassName: ""
+
+env: production
+embedDim: 768
+
+# Cookie-signing key. Override with sealed-secrets in real deployments.
+secretKey: change-me-32-bytes-or-more-please-rotate
+
+# Postgres: prefer external (managed) for production.
+postgres:
+  external: true
+  url: postgresql+psycopg://agenticos:CHANGE_ME@postgres.internal:5432/agenticos
+  user: agenticos
+  password: CHANGE_ME
+  database: agenticos
+  storage: 50Gi
+
+# Redis + NATS: use cluster-managed instances if you have them.
+redis:
+  url: redis://agenticos-redis:6379/0
+  storage: 20Gi
+
+# MinIO: tighten lifecycle a little for prod (keep 90d of docs by default).
+minio:
+  enabled: true
+  bucket: agenticos
+  storage: 200Gi
+  documentTtlDays: 90
+  noncurrentTtlDays: 7
+
+ollama:
+  enabled: false   # production: bring your own GPU-backed inference.
+
+opa:
+  enabled: true
+  url: http://agenticos-opa:8181
+
+# Service replicas + tighter resource limits.
+services:
+  apiGateway:
+    replicas: 3
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "2000m", memory: "2Gi" }
+  llmGateway:
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "2000m", memory: "2Gi" }
+  agentRuntime:
+    replicas: 3
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "4000m", memory: "4Gi" }
+  toolRegistry:
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  knowledgeSvc:
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "2000m", memory: "4Gi" }
+  memorySvc:
+    replicas: 2
+    resources:
+      requests: { cpu: "100m", memory: "256Mi" }
+      limits:   { cpu: "1000m", memory: "1Gi" }
+  worker:
+    replicas: 2
+    resources:
+      requests: { cpu: "200m", memory: "512Mi" }
+      limits:   { cpu: "2000m", memory: "2Gi" }
+
+# Ingress: TLS on, behind nginx-ingress.
+ingress:
+  enabled: true
+  className: nginx
+  host: agenticos.example.com
+  tls:
+    enabled: true
+    secretName: agenticos-tls
+
+# Backups every night, keep 30 days.
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retain: 30
+  storage: 200Gi
+
+# Hard pod-security defaults.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

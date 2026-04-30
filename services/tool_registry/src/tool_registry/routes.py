@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 from agenticos_shared.db import get_sessionmaker
 from agenticos_shared.errors import ConflictError, NotFoundError
 from agenticos_shared.models import ToolRow
+from agenticos_shared.secrets_box import encrypt_sensitive_fields
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
@@ -82,7 +83,9 @@ def list_tools(
 def create_tool(
     body: ToolCreate,
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ToolOut:
+    descriptor = encrypt_sensitive_fields(body.descriptor, key_material=settings.secret_key)
     row = ToolRow(
         id=uuid4(),
         workspace_id=body.workspace_id,
@@ -90,7 +93,7 @@ def create_tool(
         display_name=body.display_name,
         description=body.description,
         kind=body.kind,
-        descriptor=body.descriptor,
+        descriptor=descriptor,
         scopes=body.scopes,
         enabled=True,
     )
@@ -108,11 +111,17 @@ def update_tool(
     tool_id: UUID,
     body: ToolUpdate,
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> ToolOut:
     row = db.get(ToolRow, tool_id)
     if row is None:
         raise NotFoundError("tool not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    fields = body.model_dump(exclude_none=True)
+    if "descriptor" in fields:
+        fields["descriptor"] = encrypt_sensitive_fields(
+            fields["descriptor"], key_material=settings.secret_key
+        )
+    for k, v in fields.items():
         setattr(row, k, v)
     db.flush()
     return _row_to_out(row)

@@ -26,6 +26,7 @@ from agenticos_shared.openinference import (
     annotate_retrieval,
 )
 
+from ..policy import policy_check
 from ..proxies import KnowledgeProxy, LLMProxy, ToolProxy
 from ..schemas import AgentSpec, StepEvent
 
@@ -89,6 +90,8 @@ async def run_react(
     knowledge: KnowledgeProxy,
     max_iterations: int = 6,
     rag_top_k: int = 5,
+    opa_url: str | None = None,
+    principal_roles: list[str] | None = None,
 ) -> AsyncIterator[StepEvent]:
     """Async generator yielding StepEvents for an agent turn."""
 
@@ -235,6 +238,9 @@ async def run_react(
             record_agent_step(node="plan", latency_s=time.monotonic() - node_t0)
         except Exception:
             pass
+        # Build a quick lookup of tool descriptors for policy_check.
+        td_by_name = {t["name"]: t for t in tool_descriptors}
+
         for call in tool_calls:
             fn = call.get("function") or {}
             name = fn.get("name") or ""
@@ -249,6 +255,49 @@ async def run_react(
                 session_id=session_id,
                 payload={"id": call.get("id"), "name": name, "args": args},
             )
+
+            # ---- policy_check: gate every tool call through OPA ----
+            descriptor = td_by_name.get(name) or {}
+            if opa_url:
+                decision = await policy_check(
+                    opa_url=opa_url,
+                    workspace_id=agent.workspace_id,
+                    agent_id=agent.id,
+                    agent_allowed_tools=list(agent.tool_ids or []),
+                    tool_id=descriptor.get("id", ""),
+                    tool_name=name,
+                    tool_scopes=list(descriptor.get("scopes") or []),
+                    args=args if isinstance(args, dict) else None,
+                    principal_roles=principal_roles,
+                )
+                if not decision.allow:
+                    yield StepEvent(
+                        type="tool_result",
+                        session_id=session_id,
+                        payload={
+                            "id": call.get("id"),
+                            "name": name,
+                            "ok": False,
+                            "result": None,
+                            "error": f"policy denied: {decision.reason or 'no rule'}",
+                            "decision": "deny",
+                        },
+                    )
+                    # Feed the denial back to the model so it can retry/abort.
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.get("id"),
+                            "name": name,
+                            "content": json.dumps(
+                                {
+                                    "error": "policy_denied",
+                                    "reason": decision.reason,
+                                }
+                            ),
+                        }
+                    )
+                    continue
 
             tool_result = await tools.invoke(
                 tool_id=None,

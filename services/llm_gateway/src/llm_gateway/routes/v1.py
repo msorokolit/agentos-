@@ -15,6 +15,7 @@ from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_llm_call
 from agenticos_shared.models import TokenUsage
 from agenticos_shared.openinference import annotate_llm_call
+from agenticos_shared.redaction import redact_messages, redact_text
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from ..schemas import (
     EmbeddingRequest,
     EmbeddingResponse,
 )
+from ..settings import get_settings as get_settings_instance
 from ..state import get_quota
 from .deps import get_db
 
@@ -79,7 +81,19 @@ async def chat_completions(
 
     # Merge default_params with request (request overrides).
     merged = {**rm.default_params, **body.model_dump(exclude_none=True)}
-    merged["messages"] = [m.model_dump(exclude_none=True) for m in body.messages]
+    msgs = [m.model_dump(exclude_none=True) for m in body.messages]
+
+    # Optional PII scrub on outbound payload.
+    s = get_settings_instance()
+    if s.redact_outbound_payloads:
+        msgs, stats = redact_messages(msgs)
+        if stats.total:
+            log.info(
+                "outbound_payload_redacted",
+                tokens=stats.total,
+                categories=stats.counts,
+            )
+    merged["messages"] = msgs
     merged["model"] = rm.model_name  # provider call uses upstream model name
 
     provider_obj = make_provider(rm.provider, endpoint=rm.endpoint, model_name=rm.model_name)
@@ -187,8 +201,19 @@ async def embeddings(
 
     await quota.check_and_reserve_request(body.workspace_id)
     provider_obj = make_provider(rm.provider, endpoint=rm.endpoint, model_name=rm.model_name)
+
+    s = get_settings_instance()
+    embed_payload = body.model_dump(exclude_none=True)
+    if s.redact_outbound_payloads:
+        if isinstance(embed_payload.get("input"), str):
+            scrubbed, _ = redact_text(embed_payload["input"])
+            embed_payload["input"] = scrubbed
+        elif isinstance(embed_payload.get("input"), list):
+            embed_payload["input"] = [
+                redact_text(t)[0] if isinstance(t, str) else t for t in embed_payload["input"]
+            ]
     t0 = time.monotonic()
-    upstream = await provider_obj.embed(body.model_dump(exclude_none=True))
+    upstream = await provider_obj.embed(embed_payload)
     latency_ms = int((time.monotonic() - t0) * 1000)
     upstream["model"] = rm.alias
     usage = upstream.get("usage") or {}

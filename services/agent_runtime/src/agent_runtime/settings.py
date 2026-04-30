@@ -14,6 +14,7 @@ class Settings(BaseServiceSettings):
     tool_registry_url: str = Field(default="http://tool-registry:8083", alias="TOOL_REGISTRY_URL")
     knowledge_svc_url: str = Field(default="http://knowledge-svc:8084", alias="KNOWLEDGE_SVC_URL")
     memory_svc_url: str = Field(default="http://memory-svc:8085", alias="MEMORY_SVC_URL")
+    opa_url: str = Field(default="http://opa:8181", alias="OPA_URL")
     max_iterations: int = Field(default=6, alias="AGENT_MAX_ITERATIONS")
     rag_default_top_k: int = Field(default=5, alias="AGENT_RAG_TOP_K")
 

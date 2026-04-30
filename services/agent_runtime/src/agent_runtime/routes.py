@@ -131,6 +131,8 @@ async def run(
         max_iterations=settings.max_iterations,
         rag_top_k=settings.rag_default_top_k,
         publish=publish,
+        opa_url=settings.opa_url,
+        principal_roles=body.get("principal_roles") or ["builder"],
     )
 
     # Persist assistant + tool messages.
@@ -246,6 +248,8 @@ async def run_stream(
             knowledge=knowledge,
             max_iterations=settings.max_iterations,
             rag_top_k=settings.rag_default_top_k,
+            opa_url=settings.opa_url,
+            principal_roles=body.get("principal_roles") or ["builder"],
         ):
             events.append(ev)
             if publish is not None:

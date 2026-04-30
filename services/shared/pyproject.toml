@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.115,<1",
     "prometheus-client>=0.20,<1",
     "pydantic>=2.8,<3",
+    "pynacl>=1.5,<2",
     "pydantic-settings>=2.4,<3",
     "sqlalchemy>=2.0.32,<3",
     "psycopg[binary]>=3.2,<4",

@@ -116,6 +116,11 @@ jobs:
       - run: helm lint deploy/helm/agenticos
       - run: helm template agenticos deploy/helm/agenticos > /tmp/render.yaml
       - run: test -s /tmp/render.yaml
+      - run: helm lint deploy/helm/agenticos -f deploy/helm/agenticos/values-prod.yaml
+      - run: |
+          helm template agenticos deploy/helm/agenticos \
+            -f deploy/helm/agenticos/values-prod.yaml > /tmp/prod.yaml
+          test -s /tmp/prod.yaml
 
   semgrep:
     name: Semgrep (security + best-practice rulesets)

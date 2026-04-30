@@ -12,6 +12,7 @@ from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_tool_invocation
 from agenticos_shared.models import ToolRow
 from agenticos_shared.openinference import annotate_tool_call
+from agenticos_shared.secrets_box import decrypt_sensitive_fields
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -50,6 +51,10 @@ async def invoke_tool(
         raise ValidationError(f"tool '{row.name}' is disabled")
 
     descriptor = dict(row.descriptor or {})
+    # Decrypt any sensitive fields (api keys, bearer tokens, ...) just-in-time.
+    descriptor = decrypt_sensitive_fields(
+        descriptor, key_material=getattr(settings, "secret_key", "")
+    )
     params_schema = descriptor.get("parameters")
     if params_schema:
         try:

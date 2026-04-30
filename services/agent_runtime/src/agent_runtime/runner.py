@@ -42,6 +42,8 @@ async def run_agent(
     max_iterations: int = 6,
     rag_top_k: int = 5,
     publish: Any | None = None,
+    opa_url: str | None = None,
+    principal_roles: list[str] | None = None,
 ) -> tuple[RunResult, list[StepEvent]]:
     """Execute one chat turn and collect the final RunResult.
 
@@ -72,6 +74,8 @@ async def run_agent(
         knowledge=knowledge,
         max_iterations=max_iterations,
         rag_top_k=rag_top_k,
+        opa_url=opa_url,
+        principal_roles=principal_roles,
     )
 
     async for ev in _stream_to_nats(gen, publish):

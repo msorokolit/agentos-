@@ -19,6 +19,9 @@ class Settings(BaseServiceSettings):
     rpm_per_workspace: int = Field(default=600, alias="RPM_PER_WORKSPACE")
     # Optional bearer to gate the gateway from outside (api-gateway sets it).
     internal_token: str | None = Field(default=None, alias="LLM_GATEWAY_INTERNAL_TOKEN")
+    # When true, scrub outbound chat/embedding payloads of obvious PII
+    # before forwarding to a provider.
+    redact_outbound_payloads: bool = Field(default=False, alias="LLM_GATEWAY_REDACT_OUTBOUND")
 
 
 @lru_cache
