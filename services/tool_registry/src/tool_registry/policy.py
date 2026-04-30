@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 from agenticos_shared.logging import get_logger
+from agenticos_shared.metrics import record_policy_decision
 
 log = get_logger(__name__)
 
@@ -68,4 +69,14 @@ async def decide_tool_access(
         },
         "agent": {"allowed_tools": agent_allowed_tools or [tool_id]},
     }
-    return await client.evaluate("agenticos/tool_access", input=inp)
+    pkg = "agenticos/tool_access"
+    allow, reason = await client.evaluate(pkg, input=inp)
+    try:
+        record_policy_decision(
+            package=pkg,
+            decision="allow" if allow else "deny",
+            reason=reason,
+        )
+    except Exception:
+        pass
+    return allow, reason

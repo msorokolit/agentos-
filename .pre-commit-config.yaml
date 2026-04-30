@@ -1,0 +1,58 @@
+# pre-commit hooks for AgenticOS contributors.
+#
+# Install once with:
+#   pip install pre-commit && pre-commit install
+#
+# These mirror the checks ci.yml runs so contributors catch issues locally.
+
+repos:
+  # ---- Hygiene ----
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^tests/e2e/playwright-report/'
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # Helm templates use Go templating + are validated separately.
+        exclude: '^deploy/helm/agenticos/templates/.*\.yaml$'
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # ---- Python lint + format ----
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^(services|scripts|tests)/.*\.py$
+      - id: ruff-format
+        files: ^(services|scripts|tests)/.*\.py$
+
+  # ---- TypeScript / JSON / Markdown ----
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types_or: [ts, tsx, javascript, json, yaml, markdown]
+        # Skip giant lockfiles + the e2e report dir.
+        exclude: |
+          (?x)^(
+            web-ui/package-lock\.json|
+            tests/e2e/package-lock\.json|
+            tests/e2e/playwright-report/.*|
+            deploy/helm/agenticos/files/agenticos-overview\.json
+          )$
+
+  # ---- Conventional commit messages ----
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: ["feat", "fix", "docs", "chore", "refactor", "perf", "test", "ci", "build"]

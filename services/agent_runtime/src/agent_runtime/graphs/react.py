@@ -15,10 +15,12 @@ Up to ``max_iterations`` loops are permitted.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 from agenticos_shared.logging import get_logger
+from agenticos_shared.metrics import record_agent_step
 
 from ..proxies import KnowledgeProxy, LLMProxy, ToolProxy
 from ..schemas import AgentSpec, StepEvent
@@ -127,6 +129,7 @@ async def run_react(
 
     while iterations < max_iterations:
         iterations += 1
+        node_t0 = time.monotonic()
         chat_payload: dict[str, Any] = {
             "model": agent.model_alias,
             "messages": messages,
@@ -168,6 +171,10 @@ async def run_react(
         tool_calls = msg.get("tool_calls") or []
 
         if not tool_calls:
+            try:
+                record_agent_step(node="plan", latency_s=time.monotonic() - node_t0)
+            except Exception:
+                pass
             final_text = msg.get("content") or ""
             yield StepEvent(
                 type="delta",
@@ -195,6 +202,10 @@ async def run_react(
         }
         messages.append(assistant_msg)
 
+        try:
+            record_agent_step(node="plan", latency_s=time.monotonic() - node_t0)
+        except Exception:
+            pass
         for call in tool_calls:
             fn = call.get("function") or {}
             name = fn.get("name") or ""

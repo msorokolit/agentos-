@@ -9,6 +9,7 @@ from uuid import UUID
 import jsonschema
 from agenticos_shared.errors import NotFoundError, ValidationError
 from agenticos_shared.logging import get_logger
+from agenticos_shared.metrics import record_tool_invocation
 from agenticos_shared.models import ToolRow
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -79,6 +80,7 @@ async def invoke_tool(
             raise ValidationError(f"unknown tool kind: {row.kind}")
     except Exception as exc:
         latency = int((time.monotonic() - t0) * 1000)
+        record_tool_invocation(tool=row.name, kind=row.kind, ok=False, latency_ms=latency)
         return {
             "ok": False,
             "error": str(exc)[:1024],
@@ -90,6 +92,7 @@ async def invoke_tool(
         }
 
     latency = int((time.monotonic() - t0) * 1000)
+    record_tool_invocation(tool=row.name, kind=row.kind, ok=True, latency_ms=latency)
     return {
         "ok": True,
         "result": result,

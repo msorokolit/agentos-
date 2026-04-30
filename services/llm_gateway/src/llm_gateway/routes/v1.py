@@ -12,6 +12,7 @@ from typing import Annotated
 
 from agenticos_shared.errors import ValidationError
 from agenticos_shared.logging import get_logger
+from agenticos_shared.metrics import record_llm_call
 from agenticos_shared.models import TokenUsage
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -88,10 +89,12 @@ async def chat_completions(
         upstream = await provider_obj.chat(merged)
         latency_ms = int((time.monotonic() - t0) * 1000)
         usage = upstream.get("usage") or {}
+        prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        completion_tokens = int(usage.get("completion_tokens", 0) or 0)
         await quota.add_tokens(
             body.workspace_id,
-            prompt=int(usage.get("prompt_tokens", 0) or 0),
-            completion=int(usage.get("completion_tokens", 0) or 0),
+            prompt=prompt_tokens,
+            completion=completion_tokens,
         )
         _record_usage(
             db,
@@ -101,9 +104,19 @@ async def chat_completions(
             model_alias=rm.alias,
             provider=rm.provider,
             kind="chat",
-            prompt=int(usage.get("prompt_tokens", 0) or 0),
-            completion=int(usage.get("completion_tokens", 0) or 0),
+            prompt=prompt_tokens,
+            completion=completion_tokens,
             latency_ms=latency_ms,
+        )
+        record_llm_call(
+            provider=rm.provider,
+            alias=rm.alias,
+            model=rm.model_name,
+            kind="chat",
+            latency_ms=latency_ms,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            workspace_id=str(body.workspace_id) if body.workspace_id else None,
         )
         # Always echo back the *alias* — what the caller asked for.
         upstream["model"] = rm.alias
@@ -162,9 +175,8 @@ async def embeddings(
     latency_ms = int((time.monotonic() - t0) * 1000)
     upstream["model"] = rm.alias
     usage = upstream.get("usage") or {}
-    await quota.add_tokens(
-        body.workspace_id, prompt=int(usage.get("prompt_tokens", 0) or 0), completion=0
-    )
+    prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+    await quota.add_tokens(body.workspace_id, prompt=prompt_tokens, completion=0)
     _record_usage(
         db,
         workspace_id=body.workspace_id,
@@ -173,8 +185,18 @@ async def embeddings(
         model_alias=rm.alias,
         provider=rm.provider,
         kind="embedding",
-        prompt=int(usage.get("prompt_tokens", 0) or 0),
+        prompt=prompt_tokens,
         completion=0,
         latency_ms=latency_ms,
+    )
+    record_llm_call(
+        provider=rm.provider,
+        alias=rm.alias,
+        model=rm.model_name,
+        kind="embedding",
+        latency_ms=latency_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=0,
+        workspace_id=str(body.workspace_id) if body.workspace_id else None,
     )
     return EmbeddingResponse.model_validate(upstream)

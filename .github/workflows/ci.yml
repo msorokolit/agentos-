@@ -112,6 +112,43 @@ jobs:
       - run: helm template agenticos deploy/helm/agenticos > /tmp/render.yaml
       - run: test -s /tmp/render.yaml
 
+  semgrep:
+    name: Semgrep (security + best-practice rulesets)
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        env:
+          SEMGREP_RULES: >
+            p/python
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/javascript
+            p/typescript
+            p/react
+            p/dockerfile
+            p/ci
+        run: |
+          semgrep --metrics=off --error \
+            --severity ERROR \
+            --severity WARNING \
+            --exclude tests/e2e/node_modules \
+            --exclude web-ui/node_modules \
+            --sarif --output /tmp/semgrep.sarif || true
+          # Fail only on ERROR-severity findings; report WARNINGs.
+          semgrep --metrics=off --severity ERROR \
+            --exclude tests/e2e/node_modules \
+            --exclude web-ui/node_modules
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: /tmp/semgrep.sarif
+          if-no-files-found: ignore
+
   security:
     name: Security scans (pip-audit, bandit, openapi snapshot)
     runs-on: ubuntu-latest

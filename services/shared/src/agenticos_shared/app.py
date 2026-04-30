@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from .errors import AgenticOSError, Problem
 from .healthz import attach_health
 from .logging import configure_logging, get_logger
+from .metrics import attach_metrics
 from .otel import init_otel, instrument_fastapi
 from .settings import BaseServiceSettings
 
@@ -78,6 +79,7 @@ def make_app(
     )
 
     attach_health(app, service_name=service_name, version=version)
+    attach_metrics(app, service_name=service_name)
     instrument_fastapi(app, service_name=service_name)
     for router in routers:
         app.include_router(router)

@@ -14,6 +14,7 @@ import nats
 from agenticos_shared.audit import AuditEmitter, AuditEvent
 from agenticos_shared.db import session_scope
 from agenticos_shared.logging import get_logger
+from agenticos_shared.metrics import record_audit, record_audit_drop
 from agenticos_shared.models import AuditEventRow
 
 log = get_logger(__name__)
@@ -68,6 +69,10 @@ class GatewayAuditEmitter(AuditEmitter):
     async def emit(self, event: AuditEvent, subject: str = "audit.events") -> None:
         # Publish + log via parent first (always succeeds).
         await super().emit(event, subject=subject)
+        try:
+            record_audit(action=event.action, decision=event.decision.value)
+        except Exception:
+            pass
         # Best-effort DB write.
         try:
             with session_scope() as s:
@@ -92,6 +97,10 @@ class GatewayAuditEmitter(AuditEmitter):
                 )
         except Exception as exc:  # pragma: no cover - defensive
             log.warning("audit_db_write_failed", error=str(exc))
+            try:
+                record_audit_drop(reason="db_write")
+            except Exception:
+                pass
 
 
 _bus: _NatsBus | None = None
