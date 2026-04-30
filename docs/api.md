@@ -163,8 +163,44 @@ we fall back to in-Python cosine + keyword counting.
 
 Audit actions: `collection.create`, `document.upload`, `document.delete`.
 
-## Coming next (Phase 4)
+## Phase 4 — Tools
 
-- `GET/POST /api/v1/workspaces/{id}/tools` — register MCP / HTTP / OpenAPI tools
-- OPA policy decisions for tool/data/model access
-- Built-ins: `http_get`, `sql_query` (allow-listed), `rag_search`, `file_read`
+| Method | Path | Permission |
+|--------|------|------------|
+| GET    | `/api/v1/builtins` | authenticated |
+| GET    | `/api/v1/workspaces/{id}/tools` | `tool:read` (member+) |
+| POST   | `/api/v1/workspaces/{id}/tools` | `tool:write` (builder+) |
+| PATCH  | `/api/v1/workspaces/{id}/tools/{tool_id}` | `tool:write` |
+| DELETE | `/api/v1/workspaces/{id}/tools/{tool_id}` | `tool:write` |
+| POST   | `/api/v1/workspaces/{id}/tools/{tool_id}/invoke` | `tool:read` |
+
+### Tool kinds
+
+| Kind | Descriptor shape |
+|------|------------------|
+| `builtin` | `{ name, description, parameters: <JSON-Schema> }` — name must match a shipped built-in (`http_get`, `rag_search`). |
+| `http`    | `{ endpoint, method, headers, json_body_template, query_template }` — `{{args.x}}` and `{{ctx.x}}` interpolation supported. |
+| `openapi` | `{ server_url, operation: { path, method }, ... }` — translated to `endpoint` at invoke time. |
+| `mcp`     | `{ endpoint, headers? }` — JSON-RPC over HTTP/SSE; calls `tools/call` with `{name, arguments}`. |
+
+### Built-ins
+
+* `http_get { url, headers? }` — egress allow-list, drops Set-Cookie & Authorization, truncates body.
+* `rag_search { query, top_k?, collection_id? }` — hybrid search via knowledge-svc; per-hit text capped.
+
+### OPA policy
+
+The Rego bundle in `policies/tool_access.rego` decides **allow / deny**.
+The default is deny; rules let workspace admins/builders use any
+agent-bound tool, and members invoke any tool tagged `safe`.
+
+In **test** mode (`AGENTICOS_ENV=test`) we default-allow if OPA is
+unreachable. In **prod** we fail-closed.
+
+Audit actions: `tool.create`, `tool.update`, `tool.delete`, `tool.invoke`.
+
+## Coming next (Phase 5)
+
+- `POST /api/v1/agents` — register an agent (model + tools + system prompt)
+- `WS  /api/v1/chat/{agent_id}/ws` — streaming chat with tool calls + RAG citations
+- LangGraph ReAct graph; sessions + messages persisted

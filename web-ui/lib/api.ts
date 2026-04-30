@@ -89,6 +89,34 @@ export interface SearchResponse {
   hits: SearchHit[];
 }
 
+export type ToolKind = "builtin" | "http" | "openapi" | "mcp";
+
+export interface Tool {
+  id: string;
+  workspace_id: string | null;
+  name: string;
+  display_name: string | null;
+  description: string | null;
+  kind: ToolKind;
+  descriptor: Record<string, unknown>;
+  scopes: string[];
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface ToolBuiltinDescriptor {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface ToolInvokeResponse {
+  ok: boolean;
+  result?: unknown;
+  error?: string | null;
+  latency_ms?: number;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData =
     typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -246,5 +274,53 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ query, top_k }),
     });
+  },
+  // ----- Tools -----
+  listBuiltins(): Promise<ToolBuiltinDescriptor[]> {
+    return http<ToolBuiltinDescriptor[]>("/api/v1/builtins");
+  },
+  listTools(workspaceId: string): Promise<Tool[]> {
+    return http<Tool[]>(`/api/v1/workspaces/${workspaceId}/tools`);
+  },
+  createTool(
+    workspaceId: string,
+    body: {
+      name: string;
+      display_name?: string;
+      description?: string;
+      kind: ToolKind;
+      descriptor: Record<string, unknown>;
+      scopes?: string[];
+    },
+  ): Promise<Tool> {
+    return http<Tool>(`/api/v1/workspaces/${workspaceId}/tools`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  updateTool(
+    workspaceId: string,
+    toolId: string,
+    body: Partial<Pick<Tool, "enabled" | "scopes" | "descriptor" | "display_name" | "description">>,
+  ): Promise<Tool> {
+    return http<Tool>(`/api/v1/workspaces/${workspaceId}/tools/${toolId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+  deleteTool(workspaceId: string, toolId: string): Promise<void> {
+    return http<void>(`/api/v1/workspaces/${workspaceId}/tools/${toolId}`, {
+      method: "DELETE",
+    });
+  },
+  invokeTool(
+    workspaceId: string,
+    toolId: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolInvokeResponse> {
+    return http<ToolInvokeResponse>(
+      `/api/v1/workspaces/${workspaceId}/tools/${toolId}/invoke`,
+      { method: "POST", body: JSON.stringify({ args }) },
+    );
   },
 };

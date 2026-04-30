@@ -103,6 +103,9 @@ export default function WorkspacesPage() {
                 <Link href={`/workspaces/${w.id}/knowledge`} style={{ color: colors.accent }}>
                   Knowledge →
                 </Link>
+                <Link href={`/workspaces/${w.id}/tools`} style={{ color: colors.accent }}>
+                  Tools →
+                </Link>
                 <Link href={`/workspaces/${w.id}/members`} style={{ color: colors.accent }}>
                   Members →
                 </Link>
