@@ -14,9 +14,11 @@ from __future__ import annotations
 from typing import ClassVar
 
 from agenticos_shared.app import make_app
+from agenticos_shared.db import init_engine
 from arq.connections import RedisSettings
 
 from .jobs.ping import ping
+from .jobs.summarize_session import summarize_session
 from .settings import get_settings
 
 
@@ -26,13 +28,19 @@ def _redis_settings() -> RedisSettings:
     return RedisSettings.from_dsn(s.redis_url)
 
 
+async def _on_startup(_ctx: dict) -> None:
+    s = get_settings()
+    init_engine(s.database_url)
+
+
 class WorkerSettings:
     """arq WorkerSettings — discovered by ``arq`` CLI."""
 
     redis_settings: ClassVar[RedisSettings] = _redis_settings()
-    functions: ClassVar[list] = [ping]
+    functions: ClassVar[list] = [ping, summarize_session]
     max_jobs: ClassVar[int] = 4
     job_timeout: ClassVar[int] = 300
+    on_startup = _on_startup
 
 
 def create_app():  # type: ignore[no-untyped-def]

@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session as DBSession
 from ..audit_bus import get_emitter
 from ..auth.deps import require_workspace_role
 from ..db import get_db
+from ..job_queue import enqueue
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["agents"])
@@ -314,6 +315,38 @@ def list_session_messages(
         }
         for m in rows
     ]
+
+
+@router.post("/workspaces/{workspace_id}/sessions/{session_id}/end")
+async def end_session(
+    session_id: UUID,
+    request: Request,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:read"))],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """Mark a chat session ended and enqueue summarisation."""
+
+    principal, ws_id = ctx
+    s = db.get(Session, session_id)
+    if s is None or s.workspace_id != ws_id:
+        raise NotFoundError("session not found")
+    if s.ended_at is None:
+        s.ended_at = datetime.now(tz=UTC)
+    job_id = await enqueue("summarize_session", str(session_id))
+    await get_emitter().emit(
+        AuditEvent(
+            tenant_id=principal.tenant_id,
+            workspace_id=ws_id,
+            actor_id=principal.user_id,
+            actor_email=principal.email,
+            action="session.end",
+            resource_type="session",
+            resource_id=str(session_id),
+            payload={"job_id": job_id, "queued": job_id is not None},
+            ip=request.client.host if request.client else None,
+        )
+    )
+    return {"session_id": str(session_id), "job_id": job_id, "queued": job_id is not None}
 
 
 # ---------------------------------------------------------------------------

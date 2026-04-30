@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .audit_bus import init_audit, shutdown_audit
 from .db import init_db
 from .error_handlers import install_exception_handlers
+from .job_queue import init_queue, shutdown_queue
 from .rate_limit import RateLimitMiddleware, make_bucket
 from .routes.admin_models import router as admin_models_router
 from .routes.agents import router as agents_router
@@ -32,10 +33,12 @@ async def _on_startup(_app: FastAPI) -> None:
     settings = get_settings()
     init_db()
     await init_audit(settings.nats_url)
+    await init_queue(settings)
 
 
 async def _on_shutdown(_app: FastAPI) -> None:
     await shutdown_audit()
+    await shutdown_queue()
 
 
 def create_app() -> FastAPI:
