@@ -23,13 +23,27 @@ select = [
     "UP",  # pyupgrade
     "C4",  # flake8-comprehensions
     "SIM", # flake8-simplify
+    "S",   # flake8-bandit (security)
     "RUF",
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults (FastAPI Depends)
     "SIM105", # try/except/pass — contextlib.suppress doesn't work with `await`
+    "S101",   # use of `assert` — fine in tests + invariant guards
+    "S104",   # binding to all interfaces — uvicorn 0.0.0.0 is correct in containers
+    "S105",   # hardcoded "password" / token strings — flagged in test fixtures
+    "S106",
+    "S110",   # try/except/pass — defensive best-effort blocks, audited
+    "S112",   # try/except/continue — same; we'd rather skip a bad event
+    "S311",   # `random` is fine for non-crypto use (we use secrets.* for tokens)
+    "S603",   # subprocess use — only in scripts and tests, audited separately
+    "S607",   # subprocess with partial path — same justification
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S105", "S106", "S107", "S110", "S311"]
+"scripts/**"  = ["S105", "S106"]
 
 [tool.ruff.format]
 quote-style = "double"
