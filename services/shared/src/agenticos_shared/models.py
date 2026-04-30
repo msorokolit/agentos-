@@ -63,6 +63,7 @@ TOOL_KINDS = ("builtin", "http", "openapi", "mcp")
 MESSAGE_ROLES = ("system", "user", "assistant", "tool")
 MEMORY_SCOPES = ("user", "agent", "session", "workspace")
 API_KEY_SCOPES = ("read", "write", "admin")
+POLICY_PACKAGES = ("tool_access", "data_access", "model_access")
 
 
 class Base(DeclarativeBase):
@@ -453,6 +454,41 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# Policy bundles — uploaded Rego (PLAN §3, §4)
+# ---------------------------------------------------------------------------
+class PolicyBundle(Base):
+    """A versioned Rego bundle.
+
+    At most one bundle per ``(tenant_id, package, name)`` is ``active``;
+    the policy_svc fetches the active row at load time.
+    """
+
+    __tablename__ = "policy_bundle"
+    __table_args__ = (
+        Index("ix_policy_active", "tenant_id", "package", "active"),
+        Index("ix_policy_name_version", "tenant_id", "package", "name", "version"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    package: Mapped[str] = mapped_column(
+        SAEnum(*POLICY_PACKAGES, name="policy_package", native_enum=False),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    rego: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------

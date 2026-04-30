@@ -21,6 +21,7 @@ from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
 from .routes.knowledge import router as knowledge_router
 from .routes.me import router as me_router
+from .routes.policies import router as policies_router
 from .routes.tools import router as tools_router
 from .routes.workspaces import router as workspaces_router
 from .security_headers import SecurityHeadersMiddleware
@@ -75,6 +76,7 @@ def create_app() -> FastAPI:
     api.include_router(chat_router)
     api.include_router(audit_router)
     api.include_router(api_keys_router)
+    api.include_router(policies_router)
     app.include_router(api)
     return app
 
