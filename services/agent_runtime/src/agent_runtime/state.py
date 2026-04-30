@@ -7,7 +7,7 @@ from typing import Any
 import nats
 from agenticos_shared.logging import get_logger
 
-from .proxies import KnowledgeProxy, LLMProxy, ToolProxy
+from .proxies import KnowledgeProxy, LLMProxy, MemoryProxy, ToolProxy
 from .settings import Settings
 
 log = get_logger(__name__)
@@ -48,15 +48,17 @@ _bus: _NatsBus | None = None
 _llm: LLMProxy | None = None
 _tools: ToolProxy | None = None
 _knowledge: KnowledgeProxy | None = None
+_memory: MemoryProxy | None = None
 
 
 async def init_state(s: Settings) -> None:
-    global _bus, _llm, _tools, _knowledge
+    global _bus, _llm, _tools, _knowledge, _memory
     _bus = _NatsBus(s.nats_url)
     await _bus.connect()
     _llm = LLMProxy(s.llm_gateway_url)
     _tools = ToolProxy(s.tool_registry_url)
     _knowledge = KnowledgeProxy(s.knowledge_svc_url)
+    _memory = MemoryProxy(s.memory_svc_url)
 
 
 async def shutdown_state() -> None:
@@ -70,12 +72,13 @@ def get_publish():
     return _bus.publish
 
 
-def get_proxies() -> tuple[LLMProxy, ToolProxy, KnowledgeProxy]:
-    if _llm is None or _tools is None or _knowledge is None:
+def get_proxies() -> tuple[LLMProxy, ToolProxy, KnowledgeProxy, MemoryProxy]:
+    if _llm is None or _tools is None or _knowledge is None or _memory is None:
         s = Settings()
         return (
             LLMProxy(s.llm_gateway_url),
             ToolProxy(s.tool_registry_url),
             KnowledgeProxy(s.knowledge_svc_url),
+            MemoryProxy(s.memory_svc_url),
         )
-    return _llm, _tools, _knowledge
+    return _llm, _tools, _knowledge, _memory

@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .audit_bus import init_audit, shutdown_audit
 from .db import init_db
+from .error_handlers import install_exception_handlers
+from .rate_limit import RateLimitMiddleware, make_bucket
 from .routes.admin_models import router as admin_models_router
 from .routes.agents import router as agents_router
 from .routes.audit import router as audit_router
@@ -50,6 +52,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Rate-limit (skipped automatically when Redis is unreachable).
+    bucket = make_bucket(settings.redis_url)
+    app.add_middleware(RateLimitMiddleware, settings=settings, bucket=bucket)
+
+    install_exception_handlers(app)
 
     api = APIRouter(prefix=settings.api_prefix)
     api.include_router(auth_router)

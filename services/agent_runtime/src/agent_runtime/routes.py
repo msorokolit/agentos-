@@ -90,7 +90,16 @@ async def run(
         raise NotFoundError("session not found")
 
     user_msg = body.get("user_message") or ""
-    history = _load_history(db, session.id)
+
+    llm, tools, knowledge, memory = get_proxies()
+
+    # Prefer the short-term Redis buffer if it exists; fall back to DB.
+    stm = await memory.get_short_term(workspace_id=session.workspace_id, session_id=session.id)
+    history = (
+        [{"role": m["role"], "content": m["content"]} for m in stm]
+        if stm
+        else _load_history(db, session.id)
+    )
 
     # Persist the user message first.
     db.add(
@@ -104,8 +113,12 @@ async def run(
         )
     )
     db.commit()
-
-    llm, tools, knowledge = get_proxies()
+    await memory.append_short_term(
+        workspace_id=session.workspace_id,
+        session_id=session.id,
+        role="user",
+        content=user_msg,
+    )
     publish = get_publish()
     result, events = await run_agent(
         agent=_agent_to_spec(agent),
@@ -162,6 +175,13 @@ async def run(
                 meta={"iterations": result.iterations, "error": result.error},
             )
         )
+        if result.final_message:
+            await memory.append_short_term(
+                workspace_id=session.workspace_id,
+                session_id=session.id,
+                role="assistant",
+                content=result.final_message,
+            )
     db.commit()
     return result
 
@@ -185,7 +205,13 @@ async def run_stream(
         raise NotFoundError("session not found")
 
     user_msg = body.get("user_message") or ""
-    history = _load_history(db, session.id)
+    llm, tools, knowledge, memory = get_proxies()
+    stm = await memory.get_short_term(workspace_id=session.workspace_id, session_id=session.id)
+    history = (
+        [{"role": m["role"], "content": m["content"]} for m in stm]
+        if stm
+        else _load_history(db, session.id)
+    )
     db.add(
         Message(
             id=uuid4(),
@@ -197,8 +223,13 @@ async def run_stream(
         )
     )
     db.commit()
+    await memory.append_short_term(
+        workspace_id=session.workspace_id,
+        session_id=session.id,
+        role="user",
+        content=user_msg,
+    )
 
-    llm, tools, knowledge = get_proxies()
     publish = get_publish()
 
     async def gen():
@@ -260,12 +291,13 @@ async def run_stream(
                         )
                     )
                 elif ev.type == "final":
+                    final_content = ev.payload.get("content") or ""
                     s2.add(
                         Message(
                             id=uuid4(),
                             session_id=session.id,
                             role="assistant",
-                            content=ev.payload.get("content") or "",
+                            content=final_content,
                             tool_call=None,
                             citations=ev.payload.get("citations") or [],
                             tokens_in=int(ev.payload.get("tokens_in") or 0),
@@ -273,6 +305,13 @@ async def run_stream(
                             meta={"iterations": ev.payload.get("iterations")},
                         )
                     )
+                    if final_content:
+                        await memory.append_short_term(
+                            workspace_id=session.workspace_id,
+                            session_id=session.id,
+                            role="assistant",
+                            content=final_content,
+                        )
                 elif ev.type == "error":
                     s2.add(
                         Message(

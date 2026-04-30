@@ -72,6 +72,44 @@ class ToolProxy:
         return r.json()
 
 
+class MemoryProxy:
+    def __init__(self, base_url: str, *, timeout: float = 30.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    async def append_short_term(
+        self,
+        *,
+        workspace_id: UUID,
+        session_id: UUID,
+        role: str,
+        content: str,
+    ) -> None:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as c:
+                await c.post(
+                    f"{self.base_url}/short-term/append",
+                    json={
+                        "workspace_id": str(workspace_id),
+                        "session_id": str(session_id),
+                        "role": role,
+                        "content": content,
+                    },
+                )
+        except httpx.HTTPError:
+            return  # best-effort
+
+    async def get_short_term(self, *, workspace_id: UUID, session_id: UUID) -> list[dict[str, Any]]:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as c:
+                r = await c.get(f"{self.base_url}/short-term/{workspace_id}/{session_id}")
+        except httpx.HTTPError:
+            return []
+        if r.status_code >= 400:
+            return []
+        return list(r.json().get("messages") or [])
+
+
 class KnowledgeProxy:
     def __init__(self, base_url: str, *, timeout: float = 60.0) -> None:
         self.base_url = base_url.rstrip("/")
