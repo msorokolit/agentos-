@@ -1,0 +1,53 @@
+{{- if .Values.minio.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenticos-minio-init
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+data:
+  minio-init.sh: |-
+{{ .Files.Get "files/minio-init.sh" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agenticos-minio-init
+  labels: {{- include "agenticos.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels: {{- include "agenticos.labels" . | nindent 8 }}
+        app.kubernetes.io/name: minio-init
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+      - name: mc
+        image: minio/mc:latest
+        env:
+        - name: S3_ENDPOINT
+          value: {{ .Values.minio.endpoint | quote }}
+        - name: S3_ACCESS_KEY
+          value: {{ .Values.minio.accessKey | quote }}
+        - name: S3_BUCKET
+          value: {{ .Values.minio.bucket | quote }}
+        - name: S3_SECRET_KEY
+          valueFrom: { secretKeyRef: { name: agenticos-secrets, key: S3_SECRET_KEY } }
+        - name: S3_DOCUMENT_TTL_DAYS
+          value: {{ .Values.minio.documentTtlDays | quote }}
+        - name: S3_NONCURRENT_TTL_DAYS
+          value: {{ .Values.minio.noncurrentTtlDays | quote }}
+        command: ["/bin/sh", "/init/minio-init.sh"]
+        volumeMounts:
+        - { name: init, mountPath: /init }
+      volumes:
+      - name: init
+        configMap:
+          name: agenticos-minio-init
+          defaultMode: 0o755
+{{- end -}}

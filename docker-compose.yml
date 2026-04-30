@@ -80,6 +80,23 @@ services:
       retries: 10
     ports: ["9000:9000", "9001:9001"]
 
+  minio-init:
+    image: minio/mc:latest
+    networks: [agenticos]
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-agenticos}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-agenticos-minio}
+      S3_BUCKET: ${S3_BUCKET:-agenticos}
+      S3_DOCUMENT_TTL_DAYS: ${S3_DOCUMENT_TTL_DAYS:-365}
+      S3_NONCURRENT_TTL_DAYS: ${S3_NONCURRENT_TTL_DAYS:-7}
+    entrypoint: ["/bin/sh", "/init/minio-init.sh"]
+    volumes:
+      - ./deploy/compose/minio-init.sh:/init/minio-init.sh:ro
+    restart: "no"
+
   nats:
     image: nats:2.10-alpine
     restart: unless-stopped

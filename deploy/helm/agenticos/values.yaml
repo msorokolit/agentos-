@@ -48,6 +48,9 @@ minio:
   bucket: agenticos
   storage: 20Gi
   image: minio/minio:latest
+  # Lifecycle (applied by the post-install minio-init Job).
+  documentTtlDays: 365      # documents/ prefix auto-expire
+  noncurrentTtlDays: 7      # versioned old objects pruned
 
 opa:
   enabled: true
