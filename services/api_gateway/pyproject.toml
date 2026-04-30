@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agenticos-api-gateway"
+version = "0.1.0"
+description = "AgenticOS API gateway: AuthN/AuthZ, REST/WebSocket, audit, rate limit."
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "agenticos-shared",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "websockets>=12,<14",
+    "python-multipart>=0.0.9,<1",
+    "authlib>=1.3,<2",
+    "itsdangerous>=2.2,<3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
