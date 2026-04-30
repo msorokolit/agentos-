@@ -2,8 +2,11 @@
 
 > Self-hosted, on-prem agent platform that runs entirely on **local LLMs**.
 >
-> Status: **Phase 6 — Helm chart + audit explorer + hardening** complete.
-> All v1 phases shipped. v1.5 (sandboxed code-exec, multi-agent, SAML/SCIM, evals, air-gapped bundler) is the next milestone band.
+> Status: **All v1 phases shipped.** Memory service, rate limiting, problem+json
+> error mapping, in-process integration suite, demo script and the signed-release
+> pipeline (cosign + syft + Trivy + Helm packaging) are all in place.
+> v1.5 (sandboxed code-exec, multi-agent, SAML/SCIM, evals, air-gapped bundler)
+> is the next milestone band.
 
 ---
 
@@ -133,6 +136,7 @@ See [`PLAN`](https://github.com/msorokolit/agentos-/blob/main/docs/architecture.
 | **4** | Tool registry + OPA policy (built-ins, HTTP/OpenAPI/MCP) | ✅ done |
 | **5** | Agent runtime + ReAct streaming chat (WS, citations, tool calls) | ✅ done |
 | **6** | Helm chart + audit explorer + container hardening + helm CI | ✅ done |
+| **6.5** | Memory svc + rate-limit + problem+json + integration suite + demo + release.yml (cosign/SBOM/Trivy/Helm) | ✅ done |
 | 7 (v1.5) | Code sandbox, multi-agent, SAML/SCIM, evals, air-gapped bundler | — |
 
 ## 8. Security posture

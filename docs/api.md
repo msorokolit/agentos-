@@ -259,7 +259,52 @@ Query params: `actor`, `action`, `decision`, `since`, `until`, `limit`,
 
 Web UI: `/workspaces/[id]/audit` — filterable table.
 
+## Memory service (`memory-svc`, internal)
+
+Used by `agent-runtime` and any future SDK code; not currently exposed
+through the api-gateway.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST   | `/short-term/append` | Append a turn to the per-session Redis buffer |
+| GET    | `/short-term/{ws}/{session}` | Get the recent buffer |
+| DELETE | `/short-term/{ws}/{session}` | Clear it |
+| POST   | `/items` | Upsert a long-term memory item (optional embedding) |
+| GET    | `/items?workspace_id=...&scope=...` | List/filter items |
+| DELETE | `/items/{id}` | Delete |
+| POST   | `/search` | Vector-similarity search (pgvector on PG, Python cosine fallback on SQLite) |
+
+## Rate limiting
+
+`api-gateway` applies a per-principal Redis token-bucket
+(`AGENTICOS_SECRET_KEY`-derived identity → 60-second windows, default
+600 req/min from `rate_limit_per_minute`). Health/openapi/docs/WS upgrade
+paths are skipped. When Redis is unreachable, the middleware passes
+everything through.
+
+429 responses include `Retry-After`, `X-RateLimit-Limit`, and
+`X-RateLimit-Remaining` headers.
+
+## Error format
+
+All non-2xx responses are RFC-7807 `application/problem+json`. The
+gateway maps `AgenticOSError`, `HTTPException`, and
+`RequestValidationError` to a consistent shape:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Validation Error",
+  "status": 422,
+  "code": "validation_error",
+  "detail": "request validation failed",
+  "instance": "/api/v1/workspaces",
+  "extras": { "errors": [ {"loc": ["body","slug"], "msg": "...", "type": "..."} ] }
+}
+```
+
 ## v1 complete
 
-All phases 0–6 shipped. Helm chart lives at `deploy/helm/agenticos`; see
-`docs/deployment.md` for installation.
+All phases 0–6 (+6.5) shipped. Helm chart lives at `deploy/helm/agenticos`;
+see `docs/deployment.md` for installation. Tagged releases publish signed
+images to GHCR with SBOMs, Trivy scans, and a packaged Helm chart.
