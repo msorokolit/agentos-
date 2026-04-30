@@ -14,6 +14,7 @@ from agenticos_shared.errors import ValidationError
 from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_llm_call
 from agenticos_shared.models import TokenUsage
+from agenticos_shared.openinference import annotate_llm_call
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -118,6 +119,22 @@ async def chat_completions(
             completion_tokens=completion_tokens,
             workspace_id=str(body.workspace_id) if body.workspace_id else None,
         )
+        annotate_llm_call(
+            provider=rm.provider,
+            model=rm.model_name,
+            alias=rm.alias,
+            kind="chat",
+            invocation_parameters={
+                k: merged.get(k)
+                for k in ("temperature", "top_p", "max_tokens", "response_format")
+                if merged.get(k) is not None
+            },
+            input_messages=merged.get("messages"),
+            output_text=(upstream.get("choices", [{}])[0].get("message", {}).get("content")),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            workspace_id=str(body.workspace_id) if body.workspace_id else None,
+        )
         # Always echo back the *alias* — what the caller asked for.
         upstream["model"] = rm.alias
         return ChatCompletionResponse.model_validate(upstream)
@@ -195,6 +212,15 @@ async def embeddings(
         model=rm.model_name,
         kind="embedding",
         latency_ms=latency_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=0,
+        workspace_id=str(body.workspace_id) if body.workspace_id else None,
+    )
+    annotate_llm_call(
+        provider=rm.provider,
+        model=rm.model_name,
+        alias=rm.alias,
+        kind="embedding",
         prompt_tokens=prompt_tokens,
         completion_tokens=0,
         workspace_id=str(body.workspace_id) if body.workspace_id else None,

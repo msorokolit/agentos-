@@ -1,0 +1,92 @@
+name: Security Scan (ZAP baseline)
+
+on:
+  schedule:
+    - cron: "30 5 * * *"      # nightly @ 05:30 UTC
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "services/**"
+      - "docker-compose.yml"
+      - "deploy/**"
+      - ".github/workflows/security-scan.yml"
+
+permissions:
+  contents: read
+  issues: write              # ZAP action posts findings as a Markdown report
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install services + dev deps
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e ./services/shared
+          for svc in api_gateway agent_runtime llm_gateway tool_registry knowledge_svc memory_svc worker; do
+            pip install -e ./services/$svc
+          done
+
+      # We don't bring up the full compose stack — too heavy for a nightly.
+      # Instead we run the api-gateway as a uvicorn process with sqlite +
+      # the in-process integration patches. The web-ui is built as
+      # standalone and run on :3000.
+      - name: Start api-gateway (sqlite, no Redis/NATS)
+        env:
+          AGENTICOS_ENV: "test"
+          AGENTICOS_SECRET_KEY: "change-me-please-32-bytes-min!!!!"
+          DATABASE_URL: "sqlite:///./scan.db"
+          REDIS_URL: "redis://127.0.0.1:1"
+          NATS_URL: "nats://127.0.0.1:1"
+          OIDC_ISSUER: "http://127.0.0.1/realms/agenticos"
+        run: |
+          python - <<'PY' &
+          from agenticos_shared import db
+          from agenticos_shared.models import Base
+          from sqlalchemy import create_engine
+          eng = create_engine("sqlite:///./scan.db", future=True)
+          Base.metadata.create_all(eng)
+          db._engine = eng
+          import uvicorn
+          from api_gateway.main import app
+          uvicorn.run(app, host="0.0.0.0", port=8080, log_level="warning")
+          PY
+          # Wait for /healthz
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf http://127.0.0.1:8080/healthz >/dev/null; then
+              echo "api-gateway up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "api-gateway never came up" >&2; exit 1
+
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.13.0
+        with:
+          target: http://127.0.0.1:8080
+          # We let ZAP fail on any HIGH risk it finds; medium/low warn only.
+          fail_action: true
+          cmd_options: "-a -j -m 5 -T 10"
+          rules_file_name: ".github/zap-rules.tsv"
+          token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true   # report-only on the very first run; tighten later
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report
+          path: |
+            report_*.html
+            report_*.md
+            report_*.json
+          if-no-files-found: ignore

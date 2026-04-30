@@ -11,6 +11,7 @@ from agenticos_shared.errors import NotFoundError, ValidationError
 from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_tool_invocation
 from agenticos_shared.models import ToolRow
+from agenticos_shared.openinference import annotate_tool_call
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -81,6 +82,14 @@ async def invoke_tool(
     except Exception as exc:
         latency = int((time.monotonic() - t0) * 1000)
         record_tool_invocation(tool=row.name, kind=row.kind, ok=False, latency_ms=latency)
+        annotate_tool_call(
+            tool_name=row.name,
+            tool_kind=row.kind,
+            args=args,
+            result=str(exc)[:512],
+            ok=False,
+            description=row.description,
+        )
         return {
             "ok": False,
             "error": str(exc)[:1024],
@@ -93,6 +102,14 @@ async def invoke_tool(
 
     latency = int((time.monotonic() - t0) * 1000)
     record_tool_invocation(tool=row.name, kind=row.kind, ok=True, latency_ms=latency)
+    annotate_tool_call(
+        tool_name=row.name,
+        tool_kind=row.kind,
+        args=args,
+        result=result,
+        ok=True,
+        description=row.description,
+    )
     return {
         "ok": True,
         "result": result,

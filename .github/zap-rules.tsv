@@ -1,0 +1,12 @@
+# ZAP baseline rule overrides for AgenticOS.
+# Format:  ID	[IGNORE|WARN|FAIL]	[Target URL regex]	[Comment]
+#
+# We surface everything as WARN by default so we can iterate on the report
+# without breaking nightly CI. Once the baseline is clean, flip to FAIL.
+
+10038	WARN	*	# CSP header missing — relaxed CSP on /docs is intentional
+10054	WARN	*	# Cookie without SameSite — Lax is set; some health probes have none
+10063	WARN	*	# Permissions-Policy missing — we set it but ZAP misses some routes
+10096	IGNORE	*	# Timestamp disclosure — created_at is part of our API
+10202	IGNORE	*	# Anti-CSRF tokens — we use SameSite cookies + bearer tokens
+10027	IGNORE	*	# Information disclosure — suspicious comments in JS bundles

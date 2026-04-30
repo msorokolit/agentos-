@@ -21,6 +21,10 @@ from typing import Any
 
 from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_agent_step
+from agenticos_shared.openinference import (
+    annotate_agent_run,
+    annotate_retrieval,
+)
 
 from ..proxies import KnowledgeProxy, LLMProxy, ToolProxy
 from ..schemas import AgentSpec, StepEvent
@@ -88,6 +92,16 @@ async def run_react(
 ) -> AsyncIterator[StepEvent]:
     """Async generator yielding StepEvents for an agent turn."""
 
+    # Annotate the parent (run) span with agent + session metadata.
+    try:
+        annotate_agent_run(
+            agent_name=agent.name,
+            session_id=str(session_id),
+            workspace_id=str(agent.workspace_id),
+        )
+    except Exception:
+        pass
+
     # ---- prepare: optional RAG ----
     rag_hits: list[dict[str, Any]] = []
     if agent.rag_collection_id is not None or agent.config.get("rag_enabled"):
@@ -99,6 +113,21 @@ async def run_react(
         )
         rag_hits = knowledge_resp.get("hits") or []
         if rag_hits:
+            try:
+                annotate_retrieval(
+                    query=user_message,
+                    documents=[
+                        {
+                            "id": h.get("chunk_id"),
+                            "title": h.get("document_title"),
+                            "score": h.get("score"),
+                        }
+                        for h in rag_hits
+                    ],
+                    workspace_id=str(agent.workspace_id),
+                )
+            except Exception:
+                pass
             yield StepEvent(
                 type="citations",
                 session_id=session_id,
