@@ -60,6 +60,7 @@ MODEL_PROVIDERS = ("ollama", "vllm", "openai_compat")
 MODEL_KINDS = ("chat", "embedding")
 DOCUMENT_STATUSES = ("pending", "parsing", "embedding", "ready", "failed")
 TOOL_KINDS = ("builtin", "http", "openapi", "mcp")
+MESSAGE_ROLES = ("system", "user", "assistant", "tool")
 
 
 class Base(DeclarativeBase):
@@ -314,6 +315,81 @@ class ToolRow(Base):
     descriptor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     scopes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agents + chat (Phase 5)
+# ---------------------------------------------------------------------------
+class Agent(Base):
+    __tablename__ = "agent"
+    __table_args__ = (UniqueConstraint("workspace_id", "slug", name="uq_agent_ws_slug"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    system_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    model_alias: Mapped[str] = mapped_column(String(128), nullable=False)
+    graph_kind: Mapped[str] = mapped_column(String(64), nullable=False, default="react")
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    tool_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    rag_collection_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Session(Base):
+    __tablename__ = "session"
+    __table_args__ = (Index("ix_session_workspace_created", "workspace_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("agent.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Message(Base):
+    __tablename__ = "message"
+    __table_args__ = (Index("ix_message_session_created", "session_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("session.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(
+        SAEnum(*MESSAGE_ROLES, name="message_role", native_enum=False),
+        nullable=False,
+    )
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_call: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, nullable=False)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    tokens_in: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tokens_out: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )

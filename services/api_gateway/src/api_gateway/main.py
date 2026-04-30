@@ -12,7 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from .audit_bus import init_audit, shutdown_audit
 from .db import init_db
 from .routes.admin_models import router as admin_models_router
+from .routes.agents import router as agents_router
 from .routes.auth import router as auth_router
+from .routes.chat import router as chat_router
 from .routes.knowledge import router as knowledge_router
 from .routes.me import router as me_router
 from .routes.tools import router as tools_router
@@ -55,6 +57,8 @@ def create_app() -> FastAPI:
     api.include_router(admin_models_router)
     api.include_router(knowledge_router)
     api.include_router(tools_router)
+    api.include_router(agents_router)
+    api.include_router(chat_router)
     app.include_router(api)
     return app
 
