@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.eggs/
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Node
+node_modules/
+.next/
+.turbo/
+out/
+.pnpm-store/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Data / artifacts
+.data/
+.local/
+*.log
+tmp/
+.tmp/
+
+# Models / large blobs
+ollama-data/
+minio-data/
+postgres-data/
+redis-data/
+nats-data/
+
+# Build outputs
+*.tsbuildinfo
+
+# Helm
+deploy/helm/**/charts/
+deploy/helm/**/Chart.lock
