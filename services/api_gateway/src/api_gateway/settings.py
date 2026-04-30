@@ -25,6 +25,10 @@ class Settings(BaseServiceSettings):
     # Default tenant slug that a newly-seen OIDC user is auto-provisioned into.
     auto_provision_tenant: str = Field(default="acme", alias="AUTO_PROVISION_TENANT")
 
+    # Internal-service URLs (overridable for K8s).
+    llm_gateway_url: str = Field(default="http://llm-gateway:8081", alias="LLM_GATEWAY_URL")
+    llm_gateway_internal_token: str | None = Field(default=None, alias="LLM_GATEWAY_INTERNAL_TOKEN")
+
 
 @lru_cache
 def get_settings() -> Settings:

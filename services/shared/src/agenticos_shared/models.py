@@ -24,6 +24,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -55,6 +56,8 @@ def _uuid_fk(target: str, *, nullable: bool = False) -> Mapped[uuid.UUID]:
 
 WORKSPACE_ROLES = ("owner", "admin", "builder", "member", "viewer")
 AUDIT_DECISIONS = ("allow", "deny", "error")
+MODEL_PROVIDERS = ("ollama", "vllm", "openai_compat")
+MODEL_KINDS = ("chat", "embedding")
 
 
 class Base(DeclarativeBase):
@@ -142,6 +145,60 @@ class WorkspaceMember(Base):
     )
 
     workspace: Mapped[Workspace] = relationship(back_populates="members")
+
+
+# ---------------------------------------------------------------------------
+# Models registry (Phase 2)
+# ---------------------------------------------------------------------------
+class ModelRow(Base):
+    """LLM/embedding model registered for use by the llm-gateway."""
+
+    __tablename__ = "model"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    alias: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(
+        SAEnum(*MODEL_PROVIDERS, name="model_provider", native_enum=False),
+        nullable=False,
+    )
+    endpoint: Mapped[str] = mapped_column(String(512), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(
+        SAEnum(*MODEL_KINDS, name="model_kind", native_enum=False),
+        nullable=False,
+        default="chat",
+    )
+    capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    default_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class TokenUsage(Base):
+    """Per-call token usage. Aggregated by worker for dashboards."""
+
+    __tablename__ = "token_usage"
+    __table_args__ = (
+        Index("ix_token_usage_workspace_created", "workspace_id", "created_at"),
+        Index("ix_token_usage_alias_created", "model_alias", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    model_alias: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
 
 
 # ---------------------------------------------------------------------------

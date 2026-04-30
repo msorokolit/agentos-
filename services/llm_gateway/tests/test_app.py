@@ -1,15 +1,17 @@
-from fastapi.testclient import TestClient
-from llm_gateway.main import app
-
-
-def test_healthz() -> None:
-    c = TestClient(app)
-    r = c.get("/healthz")
+def test_healthz(client) -> None:
+    r = client.get("/healthz")
     assert r.status_code == 200
     assert r.json()["service"] == "llm-gateway"
 
 
-def test_openapi() -> None:
-    c = TestClient(app)
-    r = c.get("/openapi.json")
+def test_openapi(client) -> None:
+    r = client.get("/openapi.json")
     assert r.status_code == 200
+    paths = set(r.json()["paths"].keys())
+    assert {
+        "/admin/models",
+        "/admin/models/{model_id}",
+        "/admin/models/{model_id}/test",
+        "/v1/chat/completions",
+        "/v1/embeddings",
+    } <= paths
