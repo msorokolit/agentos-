@@ -11,26 +11,28 @@ Tables are intentionally minimal in Phase 0; later phases add more.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
-    Enum as SAEnum,
     ForeignKey,
     Index,
     String,
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class Base(DeclarativeBase):
@@ -53,7 +55,7 @@ class Tenant(Base):
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
-    workspaces: Mapped[list["Workspace"]] = relationship(back_populates="tenant")
+    workspaces: Mapped[list[Workspace]] = relationship(back_populates="tenant")
 
 
 class Workspace(Base):
@@ -74,7 +76,7 @@ class Workspace(Base):
     )
 
     tenant: Mapped[Tenant] = relationship(back_populates="workspaces")
-    members: Mapped[list["WorkspaceMember"]] = relationship(back_populates="workspace")
+    members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace")
 
 
 # ---------------------------------------------------------------------------

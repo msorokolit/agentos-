@@ -1,5 +1,4 @@
 import pytest
-
 from worker.jobs.ping import ping
 
 

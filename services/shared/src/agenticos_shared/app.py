@@ -55,7 +55,7 @@ def make_app(
     log = get_logger(service_name)
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):  # noqa: ANN001 - fastapi expects this signature
+    async def lifespan(app: FastAPI):
         log.info("service.starting", service=service_name, env=settings.env)
         for cb in on_startup:
             res = cb(app)

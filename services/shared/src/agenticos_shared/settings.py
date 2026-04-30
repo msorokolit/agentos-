@@ -51,9 +51,7 @@ class BaseServiceSettings(BaseSettings):
     s3_region: str = Field(default="us-east-1", alias="S3_REGION")
 
     # --- AuthN ---
-    oidc_issuer: str = Field(
-        default="http://localhost:8080/realms/agenticos", alias="OIDC_ISSUER"
-    )
+    oidc_issuer: str = Field(default="http://localhost:8080/realms/agenticos", alias="OIDC_ISSUER")
     oidc_client_id: str = Field(default="agenticos-web", alias="OIDC_CLIENT_ID")
     oidc_client_secret: str = Field(default="dev-client-secret", alias="OIDC_CLIENT_SECRET")
     oidc_redirect_uri: str = Field(
@@ -63,9 +61,7 @@ class BaseServiceSettings(BaseSettings):
 
     # --- LLM ---
     ollama_url: str = Field(default="http://localhost:11434", alias="OLLAMA_URL")
-    default_chat_model_alias: str = Field(
-        default="chat-default", alias="DEFAULT_CHAT_MODEL_ALIAS"
-    )
+    default_chat_model_alias: str = Field(default="chat-default", alias="DEFAULT_CHAT_MODEL_ALIAS")
     default_embed_model_alias: str = Field(
         default="embed-default", alias="DEFAULT_EMBED_MODEL_ALIAS"
     )
@@ -75,12 +71,8 @@ class BaseServiceSettings(BaseSettings):
     opa_url: str = Field(default="http://localhost:8181", alias="OPA_URL")
 
     # --- Observability ---
-    otel_endpoint: str | None = Field(
-        default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT"
-    )
-    otel_service_namespace: str = Field(
-        default="agenticos", alias="OTEL_SERVICE_NAMESPACE"
-    )
+    otel_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_service_namespace: str = Field(default="agenticos", alias="OTEL_SERVICE_NAMESPACE")
 
     @property
     def is_production(self) -> bool:

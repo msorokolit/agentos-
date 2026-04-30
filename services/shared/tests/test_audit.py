@@ -5,7 +5,6 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-
 from agenticos_shared.audit import AuditEmitter, AuditEvent, Decision, redact, safe_payload
 
 

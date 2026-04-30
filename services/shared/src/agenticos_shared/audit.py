@@ -8,7 +8,7 @@ The DB write is best-effort within request scope; NATS is fire-and-forget.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
@@ -43,7 +43,7 @@ class AuditEvent(BaseModel):
     decision: Decision = Decision.ALLOW
     reason: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
     def to_json(self) -> str:
         return self.model_dump_json()
@@ -68,9 +68,7 @@ class AuditEmitter:
             action=event.action,
             decision=event.decision.value,
             actor=event.actor_email,
-            resource=f"{event.resource_type}:{event.resource_id}"
-            if event.resource_type
-            else None,
+            resource=f"{event.resource_type}:{event.resource_id}" if event.resource_type else None,
         )
         if self._publish is None:
             return
@@ -102,7 +100,9 @@ def safe_payload(payload: dict[str, Any], *, drop_keys: tuple[str, ...] = ()) ->
 
     out: dict[str, Any] = {}
     for k, v in payload.items():
-        if k in drop_keys or any(s in k.lower() for s in ("secret", "password", "token", "api_key")):
+        if k in drop_keys or any(
+            s in k.lower() for s in ("secret", "password", "token", "api_key")
+        ):
             out[k] = "***"
             continue
         try:

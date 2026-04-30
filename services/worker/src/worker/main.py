@@ -11,6 +11,8 @@ service and uvicorn via a separate container) or be combined in dev.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from agenticos_shared.app import make_app
 from arq.connections import RedisSettings
 
@@ -27,10 +29,10 @@ def _redis_settings() -> RedisSettings:
 class WorkerSettings:
     """arq WorkerSettings — discovered by ``arq`` CLI."""
 
-    redis_settings = _redis_settings()
-    functions = [ping]
-    max_jobs = 4
-    job_timeout = 300
+    redis_settings: ClassVar[RedisSettings] = _redis_settings()
+    functions: ClassVar[list] = [ping]
+    max_jobs: ClassVar[int] = 4
+    job_timeout: ClassVar[int] = 300
 
 
 def create_app():  # type: ignore[no-untyped-def]

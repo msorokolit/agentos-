@@ -5,14 +5,12 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-
 from agenticos_shared.auth import (
     Principal,
     make_internal_token,
     verify_internal_token,
 )
 from agenticos_shared.errors import UnauthorizedError
-
 
 SECRET = "test-secret-32-bytes-or-more!!!"
 

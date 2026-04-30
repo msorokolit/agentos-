@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-
 from knowledge_svc.main import app
 
 

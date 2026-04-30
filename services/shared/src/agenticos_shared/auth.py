@@ -7,7 +7,7 @@ service-to-service calls.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -53,7 +53,7 @@ def make_internal_token(
 ) -> str:
     """Mint a short-lived HS256 token for service-to-service calls."""
 
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload: dict[str, Any] = {
         "sub": str(principal.user_id),
         "tenant_id": str(principal.tenant_id),

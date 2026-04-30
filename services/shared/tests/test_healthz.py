@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from agenticos_shared.healthz import attach_health
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from agenticos_shared.healthz import attach_health
 
 
 def test_health_endpoints() -> None:
