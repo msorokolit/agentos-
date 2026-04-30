@@ -58,6 +58,7 @@ WORKSPACE_ROLES = ("owner", "admin", "builder", "member", "viewer")
 AUDIT_DECISIONS = ("allow", "deny", "error")
 MODEL_PROVIDERS = ("ollama", "vllm", "openai_compat")
 MODEL_KINDS = ("chat", "embedding")
+DOCUMENT_STATUSES = ("pending", "parsing", "embedding", "ready", "failed")
 
 
 class Base(DeclarativeBase):
@@ -171,6 +172,88 @@ class ModelRow(Base):
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     default_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Collection(Base):
+    """Logical grouping of documents in a workspace."""
+
+    __tablename__ = "collection"
+    __table_args__ = (UniqueConstraint("workspace_id", "slug", name="uq_collection_ws_slug"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Document(Base):
+    """An uploaded document, optionally bound to a collection."""
+
+    __tablename__ = "document"
+    __table_args__ = (Index("ix_document_workspace_created", "workspace_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    collection_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("collection.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_uri: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    status: Mapped[str] = mapped_column(
+        SAEnum(*DOCUMENT_STATUSES, name="document_status", native_enum=False),
+        nullable=False,
+        default="pending",
+    )
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+class Chunk(Base):
+    """A text chunk + embedding for a document.
+
+    The ``embedding`` column is JSON in this cross-dialect declaration.
+    The Phase 3 migration adds a ``vector(EMBED_DIM)`` column on
+    PostgreSQL via raw SQL when the pgvector extension is available.
+    """
+
+    __tablename__ = "chunk"
+    __table_args__ = (
+        Index("ix_chunk_document_ord", "document_id", "ord"),
+        Index("ix_chunk_workspace_created", "workspace_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("document.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    ord: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Stored as JSON for portability; PG migration upgrades to vector(N).
+    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
