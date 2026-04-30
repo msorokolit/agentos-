@@ -33,10 +33,10 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Ruff lint
-        run: ruff check services/ scripts/ tests/
+        run: ruff check services/ scripts/ tests/ sdk/python/agenticos/
 
       - name: Ruff format check
-        run: ruff format --check services/ scripts/ tests/
+        run: ruff format --check services/ scripts/ tests/ sdk/python/agenticos/
 
       - name: Pytest (unit)
         run: pytest services/ -q --cov=services --cov-report=xml
@@ -46,6 +46,11 @@ jobs:
 
       - name: Pytest (eval scorer)
         run: pytest tests/evals -q
+
+      - name: Pytest (Python SDK)
+        run: |
+          pip install -e ./sdk/python/agenticos
+          pytest sdk/python/agenticos/tests -q
 
       - name: Validate Alembic migration generates SQL
         env:

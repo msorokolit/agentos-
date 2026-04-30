@@ -429,3 +429,62 @@ async def run_agent(
         )
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Streaming run (SSE) — passthrough to agent-runtime /run/stream
+# ---------------------------------------------------------------------------
+from fastapi.responses import StreamingResponse  # noqa: E402
+
+
+@router.post("/workspaces/{workspace_id}/agents/{agent_id}/run/stream")
+async def run_agent_stream(
+    agent_id: UUID,
+    body: dict,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:read"))],
+    db: Annotated[DBSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    principal, ws_id = ctx
+    a = db.get(Agent, agent_id)
+    if a is None or a.workspace_id != ws_id:
+        raise NotFoundError("agent not found")
+
+    # Resolve / create the session.
+    session_id = body.get("session_id")
+    if session_id is None:
+        s = Session(
+            id=uuid4(),
+            workspace_id=ws_id,
+            agent_id=agent_id,
+            user_id=principal.user_id,
+            meta={},
+        )
+        db.add(s)
+        db.commit()
+        session_id = s.id
+    else:
+        session_id = UUID(session_id)
+        if db.get(Session, session_id) is None:
+            raise NotFoundError("session not found")
+
+    payload = {
+        "agent_id": str(agent_id),
+        "session_id": str(session_id),
+        "user_message": body.get("user_message", ""),
+    }
+
+    async def _gen():
+        async with (
+            httpx.AsyncClient(timeout=600.0) as c,
+            c.stream(
+                "POST",
+                f"{settings.agent_runtime_url.rstrip('/')}/run/stream",
+                json=payload,
+            ) as r,
+        ):
+            async for line in r.aiter_lines():
+                if line:
+                    yield (line + "\n\n").encode()
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")
