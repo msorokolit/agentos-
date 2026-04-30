@@ -62,6 +62,7 @@ DOCUMENT_STATUSES = ("pending", "parsing", "embedding", "ready", "failed")
 TOOL_KINDS = ("builtin", "http", "openapi", "mcp")
 MESSAGE_ROLES = ("system", "user", "assistant", "tool")
 MEMORY_SCOPES = ("user", "agent", "session", "workspace")
+API_KEY_SCOPES = ("read", "write", "admin")
 
 
 class Base(DeclarativeBase):
@@ -394,6 +395,64 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent versions — immutable snapshots per publish (PLAN §3)
+# ---------------------------------------------------------------------------
+class AgentVersion(Base):
+    """Immutable snapshot of an agent at a published version."""
+
+    __tablename__ = "agent_version"
+    __table_args__ = (
+        UniqueConstraint("agent_id", "version", name="uq_agent_version"),
+        Index("ix_agent_version_agent", "agent_id", "version"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("agent.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# API keys — long-lived workspace bearer tokens (PLAN §3)
+# ---------------------------------------------------------------------------
+class ApiKey(Base):
+    """A workspace-scoped API key.
+
+    The plaintext token is **never** stored — only ``hashed_key`` (sha256 of
+    the bearer the client uses). The ``prefix`` (first 8 chars of the
+    plaintext) is kept to help admins identify keys.
+    """
+
+    __tablename__ = "api_key"
+    __table_args__ = (
+        UniqueConstraint("hashed_key", name="uq_api_key_hashed"),
+        Index("ix_api_key_workspace", "workspace_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID] = _uuid_fk("workspace.id")
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    hashed_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # ---------------------------------------------------------------------------

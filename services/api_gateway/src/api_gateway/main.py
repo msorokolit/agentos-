@@ -15,6 +15,7 @@ from .error_handlers import install_exception_handlers
 from .rate_limit import RateLimitMiddleware, make_bucket
 from .routes.admin_models import router as admin_models_router
 from .routes.agents import router as agents_router
+from .routes.api_keys import router as api_keys_router
 from .routes.audit import router as audit_router
 from .routes.auth import router as auth_router
 from .routes.chat import router as chat_router
@@ -22,6 +23,7 @@ from .routes.knowledge import router as knowledge_router
 from .routes.me import router as me_router
 from .routes.tools import router as tools_router
 from .routes.workspaces import router as workspaces_router
+from .security_headers import SecurityHeadersMiddleware
 from .settings import get_settings
 
 
@@ -53,6 +55,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Security headers on every response.
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # Rate-limit (skipped automatically when Redis is unreachable).
     bucket = make_bucket(settings.redis_url)
     app.add_middleware(RateLimitMiddleware, settings=settings, bucket=bucket)
@@ -69,6 +74,7 @@ def create_app() -> FastAPI:
     api.include_router(agents_router)
     api.include_router(chat_router)
     api.include_router(audit_router)
+    api.include_router(api_keys_router)
     app.include_router(api)
     return app
 

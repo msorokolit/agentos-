@@ -26,12 +26,17 @@ def _principal_from_request(
     *,
     required: bool,
 ) -> Principal | None:
-    token = request.cookies.get(settings.session_cookie_name)
-    if not token:
-        # Allow ``Authorization: Bearer <session-cookie>`` for SDKs.
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            token = auth.split(" ", 1)[1]
+    cookie = request.cookies.get(settings.session_cookie_name)
+    auth = request.headers.get("authorization", "")
+    bearer = auth.split(" ", 1)[1] if auth.lower().startswith("bearer ") else None
+
+    # API-key path: ``Authorization: Bearer aos_…`` is a workspace-scoped key.
+    from .api_keys import KEY_PREFIX
+
+    if bearer and bearer.startswith(KEY_PREFIX):
+        return _principal_from_api_key(bearer, db=db, request=request)
+
+    token = cookie or bearer
     if not token:
         if required:
             raise UnauthorizedError("not authenticated")
@@ -66,6 +71,62 @@ def _principal_from_request(
         display_name=user.display_name,
         roles=roles,
         workspace_ids=workspace_ids,
+        request_id=request.headers.get("x-request-id"),
+    )
+
+
+def _principal_from_api_key(plaintext: str, *, db: Session, request: Request) -> Principal:
+    """Authenticate an Authorization: Bearer aos_… key.
+
+    Looks up by sha256(plaintext), validates expiry/revocation, returns a
+    Principal scoped to the key's workspace. Updates ``last_used_at``.
+    """
+
+    from datetime import UTC, datetime
+
+    from agenticos_shared.models import ApiKey, User, Workspace
+
+    from .api_keys import hash_token
+
+    row = db.execute(
+        select(ApiKey).where(ApiKey.hashed_key == hash_token(plaintext))
+    ).scalar_one_or_none()
+    if row is None:
+        raise UnauthorizedError("invalid api key")
+    if row.revoked_at is not None:
+        raise UnauthorizedError("api key revoked")
+    now = datetime.now(tz=UTC)
+    if row.expires_at is not None and row.expires_at <= now:
+        raise UnauthorizedError("api key expired")
+
+    ws = db.get(Workspace, row.workspace_id)
+    if ws is None:
+        raise UnauthorizedError("workspace gone")
+
+    # Use the creator as the actor (audit-friendly), falling back to a
+    # synthetic ``svc-{key_prefix}`` user-ish email.
+    creator = db.get(User, row.created_by) if row.created_by else None
+    actor_email = creator.email if creator else f"svc:{row.prefix}"
+
+    # Bump last_used_at lazily (best-effort).
+    row.last_used_at = now
+
+    # Roles derive from the key's scope list, mapped to workspace roles.
+    role_map = {
+        "read": "viewer",
+        "write": "builder",
+        "admin": "admin",
+    }
+    derived = sorted({role_map.get(s, "member") for s in (row.scopes or [])})
+
+    return Principal(
+        user_id=row.created_by or row.id,
+        tenant_id=ws.tenant_id,
+        email=actor_email,
+        display_name=row.name,
+        roles=derived or ["viewer"],
+        workspace_ids=[ws.id],
+        is_service=True,
         request_id=request.headers.get("x-request-id"),
     )
 

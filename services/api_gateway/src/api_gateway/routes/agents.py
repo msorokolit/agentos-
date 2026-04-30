@@ -17,7 +17,7 @@ from agenticos_shared.errors import (
     ConflictError,
     NotFoundError,
 )
-from agenticos_shared.models import Agent, Message, Session
+from agenticos_shared.models import Agent, AgentVersion, Message, Session
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -102,6 +102,17 @@ async def create_agent(
         db.rollback()
         raise ConflictError(f"agent slug '{a.slug}' already exists") from exc
 
+    # First immutable snapshot.
+    db.add(
+        AgentVersion(
+            id=uuid4(),
+            agent_id=a.id,
+            version=a.version,
+            created_by=principal.user_id,
+            snapshot=_agent_out(a),
+        )
+    )
+
     await get_emitter().emit(
         AuditEvent(
             tenant_id=principal.tenant_id,
@@ -147,6 +158,17 @@ async def update_agent(
     a.version = a.version + 1
     a.updated_at = datetime.now(tz=UTC)
 
+    # Immutable snapshot of the new version.
+    db.add(
+        AgentVersion(
+            id=uuid4(),
+            agent_id=a.id,
+            version=a.version,
+            created_by=principal.user_id,
+            snapshot=_agent_out(a),
+        )
+    )
+
     await get_emitter().emit(
         AuditEvent(
             tenant_id=principal.tenant_id,
@@ -189,6 +211,38 @@ async def delete_agent(
             resource_id=str(agent_id),
         )
     )
+
+
+@router.get("/workspaces/{workspace_id}/agents/{agent_id}/versions")
+def list_agent_versions(
+    agent_id: UUID,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:read"))],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    _, ws_id = ctx
+    a = db.get(Agent, agent_id)
+    if a is None or a.workspace_id != ws_id:
+        raise NotFoundError("agent not found")
+    rows = (
+        db.execute(
+            select(AgentVersion)
+            .where(AgentVersion.agent_id == agent_id)
+            .order_by(AgentVersion.version.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(r.id),
+            "agent_id": str(r.agent_id),
+            "version": r.version,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "created_by": str(r.created_by) if r.created_by else None,
+            "snapshot": dict(r.snapshot or {}),
+        }
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
