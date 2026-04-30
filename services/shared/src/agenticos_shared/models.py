@@ -292,6 +292,32 @@ class TokenUsage(Base):
 # ---------------------------------------------------------------------------
 # Tool registry (Phase 4)
 # ---------------------------------------------------------------------------
+class ToolBinding(Base):
+    """Join table: agent ↔ tool (PLAN §3 ``tool_binding``).
+
+    Provides referential integrity so deleting a tool also drops every
+    agent's binding to it. The ``agent.tool_ids`` JSON list remains the
+    fast lookup path for the runtime; this table mirrors it for
+    join-friendly admin queries and ``ON DELETE CASCADE``.
+    """
+
+    __tablename__ = "tool_binding"
+
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("agent.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tool_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("tool.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class ToolRow(Base):
     """Tool registered in a workspace (or globally if workspace_id is null).
 

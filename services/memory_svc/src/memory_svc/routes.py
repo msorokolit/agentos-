@@ -99,6 +99,32 @@ def st_clear(workspace_id: UUID, session_id: UUID) -> None:
 # ---------------------------------------------------------------------------
 # Long-term (Postgres + pgvector)
 # ---------------------------------------------------------------------------
+@router.post("/put", response_model=MemoryItemOut, status_code=status.HTTP_201_CREATED)
+async def put_alias(
+    body: MemoryPut,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> MemoryItemOut:
+    """Alias of ``/items`` matching PLAN §4 internal verb ``POST /memory/put``."""
+
+    return await put_item(body, db, settings)
+
+
+class MemoryGet(MemoryQuery):
+    """Body for ``POST /get`` — same shape as ``/search``."""
+
+
+@router.post("/get", response_model=list[MemoryItemOut])
+async def get_alias(
+    body: MemoryGet,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> list[MemoryItemOut]:
+    """Alias of ``/search`` matching PLAN §4 internal verb ``POST /memory/get``."""
+
+    return await search(body, db, settings)
+
+
 @router.post("/items", response_model=MemoryItemOut, status_code=status.HTTP_201_CREATED)
 async def put_item(
     body: MemoryPut,

@@ -18,7 +18,7 @@ from agenticos_shared.errors import (
     NotFoundError,
     ValidationError,
 )
-from agenticos_shared.models import Agent, AgentVersion, Message, Session
+from agenticos_shared.models import Agent, AgentVersion, Message, Session, ToolBinding
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -32,6 +32,30 @@ from ..model_capabilities import ensure_model_supports
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["agents"])
+
+
+def _sync_tool_bindings(db: DBSession, *, agent_id: UUID, tool_ids: list[str]) -> None:
+    """Make ``tool_binding`` rows match the agent's ``tool_ids`` list."""
+
+    desired: set[UUID] = set()
+    for raw in tool_ids or []:
+        try:
+            desired.add(UUID(str(raw)))
+        except ValueError:
+            continue
+
+    existing_rows = (
+        db.execute(select(ToolBinding).where(ToolBinding.agent_id == agent_id)).scalars().all()
+    )
+    existing = {b.tool_id: b for b in existing_rows}
+
+    # Add new ones.
+    for tid in desired - set(existing):
+        db.add(ToolBinding(agent_id=agent_id, tool_id=tid))
+    # Drop removed ones.
+    for tid, row in existing.items():
+        if tid not in desired:
+            db.delete(row)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +138,9 @@ async def create_agent(
         db.rollback()
         raise ConflictError(f"agent slug '{a.slug}' already exists") from exc
 
+    # Mirror tool_ids into the join table for referential integrity.
+    _sync_tool_bindings(db, agent_id=a.id, tool_ids=list(a.tool_ids or []))
+
     # First immutable snapshot.
     db.add(
         AgentVersion(
@@ -183,6 +210,10 @@ async def update_agent(
         a.rag_collection_id = UUID(body["rag_collection_id"]) if body["rag_collection_id"] else None
     a.version = a.version + 1
     a.updated_at = datetime.now(tz=UTC)
+
+    # Re-sync the join table when tool_ids changed.
+    if "tool_ids" in body:
+        _sync_tool_bindings(db, agent_id=a.id, tool_ids=list(a.tool_ids or []))
 
     # Immutable snapshot of the new version.
     db.add(

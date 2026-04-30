@@ -9,10 +9,14 @@ import httpx
 from agenticos_shared.audit import AuditEvent, safe_payload
 from agenticos_shared.auth import Principal
 from agenticos_shared.errors import AgenticOSError
+from agenticos_shared.models import Agent
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..audit_bus import get_emitter
 from ..auth.deps import require_workspace_role
+from ..db import get_db
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["tools"])
@@ -120,9 +124,21 @@ async def delete_tool(
     request: Request,
     ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("tool:write"))],
     settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
 ):
     principal, ws_id = ctx
     await _proxy("DELETE", f"/tools/{tool_id}", settings)
+
+    # ToolBinding rows are removed by ON DELETE CASCADE in the tool table,
+    # but the JSON ``tool_ids`` list on each agent needs explicit pruning.
+    affected_agents = db.execute(select(Agent).where(Agent.workspace_id == ws_id)).scalars().all()
+    tid = str(tool_id)
+    pruned: list[str] = []
+    for a in affected_agents:
+        if tid in (a.tool_ids or []):
+            a.tool_ids = [t for t in a.tool_ids if t != tid]
+            pruned.append(str(a.id))
+
     await get_emitter().emit(
         AuditEvent(
             tenant_id=principal.tenant_id,
@@ -132,6 +148,7 @@ async def delete_tool(
             action="tool.delete",
             resource_type="tool",
             resource_id=str(tool_id),
+            payload={"pruned_agents": pruned},
             ip=request.client.host if request.client else None,
         )
     )

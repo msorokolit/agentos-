@@ -28,6 +28,8 @@ from sqlalchemy.orm import Session
 from ..audit_bus import get_emitter
 from ..auth.deps import require_admin
 from ..db import get_db
+from ..opa_client import delete_policy, opa_policy_id, push_policy
+from ..settings import Settings, get_settings
 
 router = APIRouter(prefix="/admin/policies", tags=["admin", "policies"])
 
@@ -108,6 +110,7 @@ async def upload_bundle(
     request: Request,
     principal: Annotated[Principal, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> PolicyBundleDetail:
     # Tiny syntactic check: Rego files must declare a package directive.
     if not any(line.strip().startswith("package ") for line in body.rego.splitlines()):
@@ -145,9 +148,15 @@ async def upload_bundle(
     db.flush()
 
     activated = False
+    pushed = False
     if body.activate:
         _activate(db, row=row)
         activated = True
+        pushed = await push_policy(
+            opa_url=settings.opa_url,
+            policy_id=opa_policy_id(tenant_id=row.tenant_id, package=row.package, name=row.name),
+            rego=row.rego,
+        )
 
     await get_emitter().emit(
         AuditEvent(
@@ -163,6 +172,7 @@ async def upload_bundle(
                 "version": next_version,
                 "sha256": digest,
                 "activated": activated,
+                "pushed_to_opa": pushed,
             },
             ip=request.client.host if request.client else None,
         )
@@ -176,11 +186,17 @@ async def activate_bundle(
     request: Request,
     principal: Annotated[Principal, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> PolicyBundleOut:
     row = db.get(PolicyBundle, bundle_id)
     if row is None or row.tenant_id != principal.tenant_id:
         raise NotFoundError("policy bundle not found")
     _activate(db, row=row)
+    pushed = await push_policy(
+        opa_url=settings.opa_url,
+        policy_id=opa_policy_id(tenant_id=row.tenant_id, package=row.package, name=row.name),
+        rego=row.rego,
+    )
     await get_emitter().emit(
         AuditEvent(
             tenant_id=principal.tenant_id,
@@ -189,7 +205,12 @@ async def activate_bundle(
             action="policy.activate",
             resource_type="policy_bundle",
             resource_id=str(row.id),
-            payload={"package": row.package, "name": row.name, "version": row.version},
+            payload={
+                "package": row.package,
+                "name": row.name,
+                "version": row.version,
+                "pushed_to_opa": pushed,
+            },
             ip=request.client.host if request.client else None,
         )
     )
@@ -202,12 +223,18 @@ async def delete_bundle(
     request: Request,
     principal: Annotated[Principal, Depends(require_admin)],
     db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     row = db.get(PolicyBundle, bundle_id)
     if row is None or row.tenant_id != principal.tenant_id:
         raise NotFoundError("policy bundle not found")
     if row.active:
         raise ValidationError("cannot delete an active bundle; activate another first")
+    # Mirror the deletion in OPA (best-effort; idempotent when missing).
+    await delete_policy(
+        opa_url=settings.opa_url,
+        policy_id=opa_policy_id(tenant_id=row.tenant_id, package=row.package, name=row.name),
+    )
     db.delete(row)
     await get_emitter().emit(
         AuditEvent(

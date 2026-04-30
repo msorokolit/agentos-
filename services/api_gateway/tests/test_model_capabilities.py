@@ -5,6 +5,22 @@ from __future__ import annotations
 from uuid import uuid4
 
 import respx
+from agenticos_shared.models import ToolRow
+
+
+def _seed_tool(db, workspace_id) -> str:
+    t = ToolRow(
+        id=uuid4(),
+        workspace_id=workspace_id,
+        name=f"t-{uuid4().hex[:6]}",
+        kind="builtin",
+        descriptor={},
+        scopes=[],
+        enabled=True,
+    )
+    db.add(t)
+    db.commit()
+    return str(t.id)
 
 CHAT_NO_TOOLS = {
     "id": str(uuid4()),
@@ -83,10 +99,11 @@ def test_create_with_tools_requires_tool_use_capability(
 
 
 def test_create_with_tools_passes_when_capable(
-    client, make_tenant, make_user, make_workspace, add_member, login_as
+    client, db, make_tenant, make_user, make_workspace, add_member, login_as
 ):
     _, w = _login_builder(client, make_tenant, make_user, make_workspace, add_member, login_as)
     _clear_caps_cache()
+    tool_id = _seed_tool(db, w.id)
     with respx.mock() as router:
         _mock_models(router, [CHAT_WITH_TOOLS])
         r = client.post(
@@ -95,7 +112,7 @@ def test_create_with_tools_passes_when_capable(
                 "name": "x",
                 "slug": "alpha",
                 "model_alias": "chat-tools",
-                "tool_ids": [str(uuid4())],
+                "tool_ids": [tool_id],
             },
         )
     assert r.status_code == 201, r.text
@@ -132,10 +149,11 @@ def test_create_with_embedding_alias_rejected(
 
 
 def test_create_falls_back_to_no_op_when_registry_offline(
-    client, make_tenant, make_user, make_workspace, add_member, login_as
+    client, db, make_tenant, make_user, make_workspace, add_member, login_as
 ):
     _, w = _login_builder(client, make_tenant, make_user, make_workspace, add_member, login_as)
     _clear_caps_cache()
+    tool_id = _seed_tool(db, w.id)
     with respx.mock() as router:
         router.get("http://llm-gateway:8081/admin/models").respond(503, text="unavailable")
         r = client.post(
@@ -144,7 +162,7 @@ def test_create_falls_back_to_no_op_when_registry_offline(
                 "name": "x",
                 "slug": "alpha",
                 "model_alias": "anything",
-                "tool_ids": [str(uuid4())],
+                "tool_ids": [tool_id],
             },
         )
     # We don't block agent CRUD on a transient registry outage.
