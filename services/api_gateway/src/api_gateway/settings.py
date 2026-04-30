@@ -29,6 +29,7 @@ class Settings(BaseServiceSettings):
     llm_gateway_url: str = Field(default="http://llm-gateway:8081", alias="LLM_GATEWAY_URL")
     llm_gateway_internal_token: str | None = Field(default=None, alias="LLM_GATEWAY_INTERNAL_TOKEN")
     knowledge_svc_url: str = Field(default="http://knowledge-svc:8084", alias="KNOWLEDGE_SVC_URL")
+    tool_registry_url: str = Field(default="http://tool-registry:8083", alias="TOOL_REGISTRY_URL")
 
 
 @lru_cache

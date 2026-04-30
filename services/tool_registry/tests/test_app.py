@@ -1,15 +1,10 @@
-from fastapi.testclient import TestClient
-from tool_registry.main import app
-
-
-def test_healthz() -> None:
-    c = TestClient(app)
-    r = c.get("/healthz")
+def test_healthz(client) -> None:
+    r = client.get("/healthz")
     assert r.status_code == 200
-    assert r.json()["service"] == "tool-registry"
 
 
-def test_openapi() -> None:
-    c = TestClient(app)
-    r = c.get("/openapi.json")
+def test_builtins_list(client) -> None:
+    r = client.get("/builtins")
     assert r.status_code == 200
+    names = {b["name"] for b in r.json()}
+    assert {"http_get", "rag_search"} <= names

@@ -117,7 +117,7 @@ PERMISSIONS: dict[str, int] = {
     "agent:delete": ROLE_RANK["admin"],
     # tools
     "tool:read": ROLE_RANK["member"],
-    "tool:write": ROLE_RANK["admin"],
+    "tool:write": ROLE_RANK["builder"],
     # documents
     "document:read": ROLE_RANK["viewer"],
     "document:write": ROLE_RANK["builder"],

@@ -59,6 +59,7 @@ AUDIT_DECISIONS = ("allow", "deny", "error")
 MODEL_PROVIDERS = ("ollama", "vllm", "openai_compat")
 MODEL_KINDS = ("chat", "embedding")
 DOCUMENT_STATUSES = ("pending", "parsing", "embedding", "ready", "failed")
+TOOL_KINDS = ("builtin", "http", "openapi", "mcp")
 
 
 class Base(DeclarativeBase):
@@ -281,6 +282,40 @@ class TokenUsage(Base):
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool registry (Phase 4)
+# ---------------------------------------------------------------------------
+class ToolRow(Base):
+    """Tool registered in a workspace (or globally if workspace_id is null).
+
+    ``descriptor`` is a JSON-Schema-shaped object describing the tool's
+    name, description, parameter schema, and per-kind connection details.
+    """
+
+    __tablename__ = "tool"
+    __table_args__ = (UniqueConstraint("workspace_id", "name", name="uq_tool_ws_name"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(
+        SAEnum(*TOOL_KINDS, name="tool_kind", native_enum=False),
+        nullable=False,
+    )
+    descriptor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    scopes: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
     )
 
 
