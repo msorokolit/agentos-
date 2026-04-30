@@ -37,6 +37,27 @@ export interface Member {
   added_at: string;
 }
 
+export type ModelProvider = "ollama" | "vllm" | "openai_compat";
+export type ModelKind = "chat" | "embedding";
+
+export interface Model {
+  id: string;
+  alias: string;
+  provider: ModelProvider;
+  endpoint: string;
+  model_name: string;
+  kind: ModelKind;
+  capabilities: Record<string, unknown>;
+  default_params: Record<string, unknown>;
+  enabled: boolean;
+}
+
+export interface ModelTestResult {
+  ok: boolean;
+  latency_ms: number;
+  detail: string | null;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
@@ -115,6 +136,36 @@ export const api = {
   removeMember(workspaceId: string, userId: string): Promise<void> {
     return http<void>(`/api/v1/workspaces/${workspaceId}/members/${userId}`, {
       method: "DELETE",
+    });
+  },
+  // ----- Models admin -----
+  listModels(): Promise<Model[]> {
+    return http<Model[]>("/api/v1/admin/models");
+  },
+  createModel(body: {
+    alias: string;
+    provider: ModelProvider;
+    endpoint: string;
+    model_name: string;
+    kind: ModelKind;
+  }): Promise<Model> {
+    return http<Model>("/api/v1/admin/models", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  updateModel(id: string, body: Partial<Pick<Model, "endpoint" | "model_name" | "enabled">>): Promise<Model> {
+    return http<Model>(`/api/v1/admin/models/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+  deleteModel(id: string): Promise<void> {
+    return http<void>(`/api/v1/admin/models/${id}`, { method: "DELETE" });
+  },
+  testModel(id: string): Promise<ModelTestResult> {
+    return http<ModelTestResult>(`/api/v1/admin/models/${id}/test`, {
+      method: "POST",
     });
   },
 };

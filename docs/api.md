@@ -88,7 +88,41 @@ SELECT created_at, action, decision, actor_email, resource_id
 FROM audit_event ORDER BY created_at DESC LIMIT 20;
 ```
 
-## Coming next (Phase 2)
+## Phase 2 — LLM gateway
 
-- `GET/POST /admin/models` and `POST /admin/models/{id}/test`
-- `POST /llm/v1/chat/completions`, `POST /llm/v1/embeddings` (proxied to llm-gateway)
+### Models admin (api-gateway → llm-gateway proxy)
+
+All routes require `admin` or `owner` in any workspace (or superuser).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET    | `/api/v1/admin/models` | List registered models |
+| POST   | `/api/v1/admin/models` | Register a model (alias, provider, endpoint, model_name, kind) |
+| PATCH  | `/api/v1/admin/models/{id}` | Update endpoint / model_name / capabilities / enabled |
+| DELETE | `/api/v1/admin/models/{id}` | De-register a model |
+| POST   | `/api/v1/admin/models/{id}/test` | Ping the upstream provider, return latency |
+
+Audit actions emitted: `model.create`, `model.update`, `model.delete`.
+
+### Inference (llm-gateway, OpenAI-compatible)
+
+These endpoints are exposed by the **llm-gateway** service directly (port
+8081). The api-gateway will proxy them in Phase 5; for now agents and
+internal callers hit the gateway directly.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/chat/completions` | OpenAI-shaped chat. Set `stream: true` for SSE. `model` is the **alias** (not the upstream model name). |
+| POST | `/v1/embeddings` | OpenAI-shaped embeddings. |
+
+Quotas: per-workspace daily token budget + RPM, enforced via Redis.
+Configure with `DAILY_TOKEN_BUDGET_PER_WORKSPACE` and `RPM_PER_WORKSPACE`
+env vars.
+
+Token usage is recorded in the `token_usage` table for every call.
+
+## Coming next (Phase 3)
+
+- `POST /api/v1/workspaces/{id}/documents` — upload + ingest
+- `POST /api/v1/workspaces/{id}/documents/search` — hybrid search
+- Web UI: knowledge upload + search

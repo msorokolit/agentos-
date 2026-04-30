@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type Me } from "../../lib/api";
 import { card, colors } from "../../lib/styles";
@@ -36,17 +37,28 @@ export default function AdminPage() {
           </p>
         </div>
       ) : (
-        <>
-          <div style={card}>
-            <h3 style={{ marginTop: 0 }}>Coming in Phase 2 +</h3>
-            <ul style={{ color: colors.muted, lineHeight: 1.85 }}>
-              <li>Models registry (Ollama / vLLM)</li>
-              <li>Tools registry (MCP / HTTP / built-ins)</li>
-              <li>Audit log explorer</li>
-              <li>Policy bundles (OPA)</li>
-            </ul>
-          </div>
-        </>
+        <div style={card}>
+          <h3 style={{ marginTop: 0 }}>Sections</h3>
+          <ul style={{ lineHeight: 1.85, listStyle: "none", padding: 0 }}>
+            <li>
+              <Link href="/admin/models" style={{ color: colors.accent }}>
+                → Models
+              </Link>
+              <span style={{ color: colors.muted, marginLeft: "0.5rem", fontSize: 13 }}>
+                Register Ollama / vLLM endpoints; ping & enable/disable
+              </span>
+            </li>
+            <li style={{ color: colors.muted }}>
+              <span style={{ opacity: 0.6 }}>→ Tools (Phase 4)</span>
+            </li>
+            <li style={{ color: colors.muted }}>
+              <span style={{ opacity: 0.6 }}>→ Audit log (Phase 6)</span>
+            </li>
+            <li style={{ color: colors.muted }}>
+              <span style={{ opacity: 0.6 }}>→ Policy bundles (Phase 4)</span>
+            </li>
+          </ul>
+        </div>
       )}
     </div>
   );
