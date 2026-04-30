@@ -2,7 +2,7 @@
 
 > Self-hosted, on-prem agent platform that runs entirely on **local LLMs**.
 >
-> Status: **Phase 2 — LLM Gateway + Models admin** complete. Next: Phase 3 (Knowledge service + RAG).
+> Status: **Phase 3 — Knowledge service + RAG** complete. Next: Phase 4 (Tool registry + Policy).
 
 ---
 
@@ -128,8 +128,8 @@ See [`PLAN`](https://github.com/msorokolit/agentos-/blob/main/docs/architecture.
 | **0** | Repo skeleton, shared lib, service stubs, compose stack, migrations, CI | ✅ done |
 | **1** | OIDC + RBAC + workspaces + audit emitter | ✅ done |
 | **2** | LLM gateway + models admin (Ollama/vLLM/openai-compat) + quotas | ✅ done |
-| 3 | Knowledge + RAG | ⏳ next |
-| 4 | Tool registry + Policy (OPA) | — |
+| **3** | Knowledge ingest + hybrid search (pgvector + tsvector + RRF) | ✅ done |
+| 4 | Tool registry + Policy (OPA) | ⏳ next |
 | 5 | Agent runtime + chat (LangGraph ReAct, streaming) | — |
 | 6 | Hardening + Helm chart | — |
 | 7 (v1.5) | Code sandbox, multi-agent, SAML/SCIM, evals, air-gapped bundler | — |

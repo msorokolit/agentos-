@@ -121,8 +121,50 @@ env vars.
 
 Token usage is recorded in the `token_usage` table for every call.
 
-## Coming next (Phase 3)
+## Phase 3 — Knowledge
 
-- `POST /api/v1/workspaces/{id}/documents` — upload + ingest
-- `POST /api/v1/workspaces/{id}/documents/search` — hybrid search
-- Web UI: knowledge upload + search
+All routes are workspace-scoped and require the standard RBAC permissions.
+
+| Method | Path | Permission |
+|--------|------|------------|
+| GET    | `/api/v1/workspaces/{id}/collections` | `document:read` |
+| POST   | `/api/v1/workspaces/{id}/collections` | `document:write` (builder+) |
+| GET    | `/api/v1/workspaces/{id}/documents` | `document:read` |
+| POST   | `/api/v1/workspaces/{id}/documents` (multipart) | `document:write` |
+| DELETE | `/api/v1/workspaces/{id}/documents/{doc_id}` | `document:write` |
+| POST   | `/api/v1/workspaces/{id}/search` | `document:read` |
+
+Search request body:
+```json
+{ "query": "what is X?", "top_k": 8, "collection_id": "<uuid>?" }
+```
+
+Search response:
+```json
+{
+  "query": "what is X?",
+  "hits": [
+    {
+      "chunk_id": "...",
+      "document_id": "...",
+      "document_title": "Whitepaper.pdf",
+      "ord": 12,
+      "text": "...chunk text...",
+      "score": 0.123,
+      "meta": {}
+    }
+  ]
+}
+```
+
+On PostgreSQL we use `pgvector` (cosine ivfflat) **and** a generated
+`tsvector` GIN index, fused via reciprocal-rank fusion. On SQLite (tests)
+we fall back to in-Python cosine + keyword counting.
+
+Audit actions: `collection.create`, `document.upload`, `document.delete`.
+
+## Coming next (Phase 4)
+
+- `GET/POST /api/v1/workspaces/{id}/tools` — register MCP / HTTP / OpenAPI tools
+- OPA policy decisions for tool/data/model access
+- Built-ins: `http_get`, `sql_query` (allow-listed), `rag_search`, `file_read`

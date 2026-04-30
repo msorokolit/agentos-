@@ -13,6 +13,7 @@ from .audit_bus import init_audit, shutdown_audit
 from .db import init_db
 from .routes.admin_models import router as admin_models_router
 from .routes.auth import router as auth_router
+from .routes.knowledge import router as knowledge_router
 from .routes.me import router as me_router
 from .routes.workspaces import router as workspaces_router
 from .settings import get_settings
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     api.include_router(me_router)
     api.include_router(workspaces_router)
     api.include_router(admin_models_router)
+    api.include_router(knowledge_router)
     app.include_router(api)
     return app
 

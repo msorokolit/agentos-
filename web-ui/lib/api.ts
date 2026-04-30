@@ -58,14 +58,53 @@ export interface ModelTestResult {
   detail: string | null;
 }
 
+export interface DocumentRow {
+  id: string;
+  workspace_id: string;
+  collection_id: string | null;
+  title: string;
+  mime: string | null;
+  sha256: string | null;
+  size_bytes: number;
+  status: "pending" | "parsing" | "embedding" | "ready" | "failed";
+  error: string | null;
+  chunk_count: number;
+  meta: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SearchHit {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  ord: number;
+  text: string;
+  score: number;
+  meta: Record<string, unknown>;
+}
+
+export interface SearchResponse {
+  query: string;
+  hits: SearchHit[];
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+  const baseHeaders: Record<string, string> = {};
+  if (!isFormData) {
+    baseHeaders["Content-Type"] = "application/json";
+  }
+  const { headers: extraHeaders, ...rest } = init ?? {};
+  const headers = {
+    ...baseHeaders,
+    ...((extraHeaders as Record<string, string>) ?? {}),
+  };
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    ...init,
+    headers,
+    ...rest,
   });
   if (res.status === 401) {
     throw new HttpError(401, "unauthorized");
@@ -166,6 +205,46 @@ export const api = {
   testModel(id: string): Promise<ModelTestResult> {
     return http<ModelTestResult>(`/api/v1/admin/models/${id}/test`, {
       method: "POST",
+    });
+  },
+  // ----- Knowledge -----
+  listDocuments(workspaceId: string): Promise<DocumentRow[]> {
+    return http<DocumentRow[]>(`/api/v1/workspaces/${workspaceId}/documents`);
+  },
+  uploadDocument(
+    workspaceId: string,
+    file: File,
+    opts: { collection_id?: string; title?: string; embed_alias?: string } = {},
+  ): Promise<DocumentRow> {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (opts.collection_id) fd.append("collection_id", opts.collection_id);
+    if (opts.title) fd.append("title", opts.title);
+    if (opts.embed_alias) fd.append("embed_alias", opts.embed_alias);
+    return http<DocumentRow>(
+      `/api/v1/workspaces/${workspaceId}/documents`,
+      {
+        method: "POST",
+        body: fd,
+        // override Content-Type so the browser sets the multipart boundary.
+        headers: {},
+      },
+    );
+  },
+  deleteDocument(workspaceId: string, documentId: string): Promise<void> {
+    return http<void>(
+      `/api/v1/workspaces/${workspaceId}/documents/${documentId}`,
+      { method: "DELETE" },
+    );
+  },
+  search(
+    workspaceId: string,
+    query: string,
+    top_k = 8,
+  ): Promise<SearchResponse> {
+    return http<SearchResponse>(`/api/v1/workspaces/${workspaceId}/search`, {
+      method: "POST",
+      body: JSON.stringify({ query, top_k }),
     });
   },
 };
