@@ -72,6 +72,11 @@ def api_app(monkeypatch):
     from api_gateway import settings as st
 
     st.get_settings.cache_clear()
+    # Drop the model-capability cache so a previous test's mock data
+    # doesn't leak into this one.
+    from api_gateway import model_capabilities as mc
+
+    mc._clear_cache()
     import api_gateway.main as main_mod
 
     reload(main_mod)

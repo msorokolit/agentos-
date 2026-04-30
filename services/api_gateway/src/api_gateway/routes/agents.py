@@ -27,6 +27,7 @@ from ..audit_bus import get_emitter
 from ..auth.deps import require_workspace_role
 from ..db import get_db
 from ..job_queue import enqueue
+from ..model_capabilities import ensure_model_supports
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["agents"])
@@ -78,8 +79,17 @@ async def create_agent(
     request: Request,
     ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:write"))],
     db: Annotated[DBSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     principal, ws_id = ctx
+    await ensure_model_supports(
+        alias=body.get("model_alias", "chat-default"),
+        needs_tool_use=bool(body.get("tool_ids")),
+        needs_rag=bool(
+            body.get("rag_collection_id") or (body.get("config") or {}).get("rag_enabled")
+        ),
+        settings=settings,
+    )
     a = Agent(
         id=uuid4(),
         workspace_id=ws_id,
@@ -137,11 +147,25 @@ async def update_agent(
     request: Request,
     ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("agent:write"))],
     db: Annotated[DBSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ):
     principal, ws_id = ctx
     a = db.get(Agent, agent_id)
     if a is None or a.workspace_id != ws_id:
         raise NotFoundError("agent not found")
+
+    # Re-validate capabilities for the post-update state.
+    new_alias = body.get("model_alias", a.model_alias)
+    new_tool_ids = body.get("tool_ids", a.tool_ids)
+    new_config = body.get("config", a.config) or {}
+    new_rag = body.get("rag_collection_id", a.rag_collection_id) or new_config.get("rag_enabled")
+    await ensure_model_supports(
+        alias=new_alias,
+        needs_tool_use=bool(new_tool_ids),
+        needs_rag=bool(new_rag),
+        settings=settings,
+    )
+
     for k in (
         "name",
         "description",

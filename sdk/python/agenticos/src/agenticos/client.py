@@ -259,12 +259,13 @@ class AgenticOSClient:
         query: str,
         *,
         top_k: int = 8,
+        collection_id: UUID | str | None = None,
     ) -> SearchResponse:
-        body = self._request(
-            "POST",
-            f"/api/v1/workspaces/{workspace_id}/search",
-            json={"query": query, "top_k": top_k},
-        )
+        if collection_id is not None:
+            path = f"/api/v1/workspaces/{workspace_id}/collections/{collection_id}/search"
+        else:
+            path = f"/api/v1/workspaces/{workspace_id}/search"
+        body = self._request("POST", path, json={"query": query, "top_k": top_k})
         return SearchResponse.model_validate(body)
 
     # ------------------------------------------------------------------

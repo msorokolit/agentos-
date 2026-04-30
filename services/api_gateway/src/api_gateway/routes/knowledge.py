@@ -223,3 +223,22 @@ async def search(
     payload = {**body, "workspace_id": str(ws_id)}
     _, out = await _proxy_json("POST", "/search", settings, json=payload)
     return out
+
+
+@router.post("/workspaces/{workspace_id}/collections/{collection_id}/search")
+async def search_collection(
+    collection_id: UUID,
+    body: dict,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("document:read"))],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Collection-scoped hybrid search (PLAN §4 — POST /collections/{id}/search)."""
+
+    _, ws_id = ctx
+    payload = {
+        **body,
+        "workspace_id": str(ws_id),
+        "collection_id": str(collection_id),
+    }
+    _, out = await _proxy_json("POST", "/search", settings, json=payload)
+    return out
