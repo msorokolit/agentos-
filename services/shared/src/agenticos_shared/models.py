@@ -35,10 +35,97 @@ from sqlalchemy import (
     Enum as SAEnum,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator, UserDefinedType
+
+
+class _PgVector(UserDefinedType):
+    """Native ``vector(N)`` type for PostgreSQL via pgvector.
+
+    We keep the wire format as the pgvector text literal ``"[1,2,3]"`` so we
+    don't need the ``pgvector`` Python package as a runtime dependency.
+    """
+
+    cache_ok = True
+
+    def __init__(self, dim: int) -> None:
+        self.dim = dim
+
+    def get_col_spec(self, **_: Any) -> str:
+        return f"vector({self.dim})"
+
+    def bind_processor(self, dialect):  # type: ignore[override]
+        def _process(value):
+            if value is None:
+                return None
+            if isinstance(value, str):
+                return value
+            return "[" + ",".join(repr(float(v)) for v in value) + "]"
+
+        return _process
+
+    def result_processor(self, dialect, coltype):  # type: ignore[override]
+        def _process(value):
+            if value is None:
+                return None
+            if isinstance(value, list):
+                return value
+            s = str(value).strip()
+            if s.startswith("[") and s.endswith("]"):
+                inner = s[1:-1].strip()
+                if not inner:
+                    return []
+                return [float(p) for p in inner.split(",")]
+            return value
+
+        return _process
+
+
+class Embedding(TypeDecorator):
+    """Cross-dialect embedding column.
+
+    - On PostgreSQL: ``vector(N)`` (pgvector) — values are bound as the
+      pgvector text literal ``"[…]"`` so we do not need the ``pgvector``
+      python lib at runtime.
+    - On SQLite/other dialects: JSON, so unit tests stay portable.
+    """
+
+    impl = JSON
+    cache_ok = True
+
+    def __init__(self, dim: int = 768) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def load_dialect_impl(self, dialect):  # type: ignore[override]
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(_PgVector(self.dim))
+        return dialect.type_descriptor(JSON())
+
+    def process_bind_param(self, value, dialect):  # type: ignore[override]
+        return value
+
+    def process_result_value(self, value, dialect):  # type: ignore[override]
+        return value
 
 
 def _utcnow() -> datetime:
     return datetime.now(tz=UTC)
+
+
+def _embed_dim() -> int:
+    """Read ``EMBED_DIM`` at import time, defaulting to 768.
+
+    Models import this once when SQLAlchemy resolves columns. Callers that
+    need to override at runtime should set ``EMBED_DIM`` before importing
+    ``agenticos_shared.models``.
+    """
+
+    import os
+
+    try:
+        return int(os.getenv("EMBED_DIM", "768"))
+    except ValueError:
+        return 768
 
 
 # Use ``Uuid`` so SQLAlchemy picks PG UUID on PostgreSQL and CHAR(32) on
@@ -287,8 +374,8 @@ class Chunk(Base):
     ord: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # Stored as JSON for portability; PG migration upgrades to vector(N).
-    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    # JSON on SQLite, ``vector(EMBED_DIM)`` on PostgreSQL.
+    embedding: Mapped[list[float] | None] = mapped_column(Embedding(_embed_dim()), nullable=True)
     meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -581,7 +668,7 @@ class MemoryItem(Base):
     key: Mapped[str] = mapped_column(String(255), nullable=False)
     value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Embedding(_embed_dim()), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
