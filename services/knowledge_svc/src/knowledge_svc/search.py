@@ -98,7 +98,16 @@ def _python_hybrid(
         .where(Chunk.workspace_id == workspace_id)
     )
     if collection_id is not None:
-        q = q.where(Document.collection_id == collection_id)
+        from agenticos_shared.models import CollectionDocument
+
+        q = q.where(
+            (Document.collection_id == collection_id)
+            | Document.id.in_(
+                select(CollectionDocument.document_id).where(
+                    CollectionDocument.collection_id == collection_id
+                )
+            )
+        )
 
     rows = db.execute(q).all()
 
@@ -166,31 +175,37 @@ def _pg_hybrid(
 ) -> list[Hit]:
     from sqlalchemy import text as sql_text
 
-    # Vector top-N
-    vec_sql = sql_text(
-        """
+    # ``cd`` is the new many-to-many join; we LEFT JOIN it and accept
+    # either the legacy primary collection_id OR a row in the join table.
+    cd_filter = (
+        "(CAST(:col AS uuid) IS NULL "
+        "OR d.collection_id = CAST(:col AS uuid) "
+        "OR EXISTS (SELECT 1 FROM collection_document cd "
+        "           WHERE cd.document_id = d.id AND cd.collection_id = CAST(:col AS uuid)))"
+    )
+    # ``cd_filter`` is a fixed string literal built above so these
+    # f-strings are not a SQL-injection surface.
+    vec_query = f"""
         SELECT c.id AS chunk_id, c.document_id, d.title AS doc_title,
                c.ord, c.text, c.embedding <=> CAST(:emb AS vector) AS distance, c.meta
         FROM chunk c JOIN document d ON d.id = c.document_id
         WHERE c.workspace_id = :ws
-          AND (CAST(:col AS uuid) IS NULL OR d.collection_id = CAST(:col AS uuid))
+          AND {cd_filter}
         ORDER BY c.embedding <=> CAST(:emb AS vector)
         LIMIT :k
-        """
-    )
-    # Keyword top-N (tsv)
-    kw_sql = sql_text(
-        """
+        """  # noqa: S608
+    vec_sql = sql_text(vec_query)
+    kw_query = f"""
         SELECT c.id AS chunk_id, c.document_id, d.title AS doc_title,
                c.ord, c.text, ts_rank_cd(c.tsv, plainto_tsquery('simple', :q)) AS rank, c.meta
         FROM chunk c JOIN document d ON d.id = c.document_id
         WHERE c.workspace_id = :ws
           AND c.tsv @@ plainto_tsquery('simple', :q)
-          AND (CAST(:col AS uuid) IS NULL OR d.collection_id = CAST(:col AS uuid))
+          AND {cd_filter}
         ORDER BY rank DESC
         LIMIT :k
-        """
-    )
+        """  # noqa: S608
+    kw_sql = sql_text(kw_query)
     params = {
         "ws": workspace_id,
         "col": collection_id,

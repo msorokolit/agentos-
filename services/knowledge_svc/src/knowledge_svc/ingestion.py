@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 from agenticos_shared.errors import NotFoundError
 from agenticos_shared.logging import get_logger
 from agenticos_shared.models import Chunk as ChunkRow
-from agenticos_shared.models import Document
+from agenticos_shared.models import CollectionDocument, Document
 from sqlalchemy.orm import Session
 
 from .chunker import chunk_pages, chunk_text, count_tokens
@@ -132,6 +132,18 @@ def make_document_row(
         chunk_count=0,
         meta={},
     )
+
+
+def mirror_primary_collection(db: Session, doc: Document) -> None:
+    """Ensure the (collection, document) join row exists for the primary
+    ``document.collection_id``. Idempotent — a no-op when no primary
+    collection is set or the row already exists."""
+
+    if doc.collection_id is None:
+        return
+    existing = db.get(CollectionDocument, (doc.collection_id, doc.id))
+    if existing is None:
+        db.add(CollectionDocument(collection_id=doc.collection_id, document_id=doc.id))
 
 
 def estimate_tokens(text: str) -> int:

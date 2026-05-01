@@ -203,6 +203,32 @@ class Collection(Base):
     )
 
 
+class CollectionDocument(Base):
+    """Many-to-many join: a document can live in 0..N collections.
+
+    PLAN §3 explicitly calls for ``collection_document(...)``. The
+    legacy ``document.collection_id`` FK is preserved as a
+    "primary collection" hint so existing code keeps working; the join
+    table is the source of truth for set-membership queries.
+    """
+
+    __tablename__ = "collection_document"
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("collection.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("document.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+
 class Document(Base):
     """An uploaded document, optionally bound to a collection."""
 

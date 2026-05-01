@@ -28,6 +28,11 @@ def list_audit(
     actor: str | None = None,
     action: str | None = None,
     decision: str | None = None,
+    # PLAN §4 spells these as ``from`` / ``to``; ``since`` / ``until``
+    # are kept as backwards-compatible aliases for clients already on
+    # those names.
+    from_: Annotated[datetime | None, Query(alias="from")] = None,
+    to: Annotated[datetime | None, Query(alias="to")] = None,
     since: datetime | None = None,
     until: datetime | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -47,10 +52,12 @@ def list_audit(
         q = q.where(AuditEventRow.action == action)
     if decision:
         q = q.where(AuditEventRow.decision == decision)
-    if since:
-        q = q.where(AuditEventRow.created_at >= since)
-    if until:
-        q = q.where(AuditEventRow.created_at <= until)
+    lower = from_ or since
+    upper = to or until
+    if lower:
+        q = q.where(AuditEventRow.created_at >= lower)
+    if upper:
+        q = q.where(AuditEventRow.created_at <= upper)
 
     rows = db.execute(q).scalars().all()
     return [

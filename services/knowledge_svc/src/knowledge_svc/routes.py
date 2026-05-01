@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .embedder import Embedder
-from .ingestion import ingest_document, make_document_row
+from .ingestion import ingest_document, make_document_row, mirror_primary_collection
 from .queue import enqueue
 from .s3 import upload_blob
 from .schemas import (
@@ -134,6 +134,73 @@ def list_collections(
     return [_coll_out(c) for c in rows]
 
 
+@router.post(
+    "/collections/{collection_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def add_document_to_collection(
+    collection_id: UUID,
+    document_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Add a document to a collection (PLAN §3 ``collection_document``)."""
+
+    from agenticos_shared.models import CollectionDocument
+
+    coll = db.get(Collection, collection_id)
+    if coll is None:
+        raise NotFoundError("collection not found")
+    doc = db.get(Document, document_id)
+    if doc is None:
+        raise NotFoundError("document not found")
+    if doc.workspace_id != coll.workspace_id:
+        raise ValidationError("collection and document live in different workspaces")
+    if db.get(CollectionDocument, (collection_id, document_id)) is None:
+        db.add(CollectionDocument(collection_id=collection_id, document_id=document_id))
+
+
+@router.delete(
+    "/collections/{collection_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_document_from_collection(
+    collection_id: UUID,
+    document_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    from agenticos_shared.models import CollectionDocument
+
+    row = db.get(CollectionDocument, (collection_id, document_id))
+    if row is None:
+        raise NotFoundError("link not found")
+    db.delete(row)
+
+
+@router.get(
+    "/collections/{collection_id}/documents",
+    response_model=list[DocumentOut],
+)
+def list_collection_documents(
+    collection_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[DocumentOut]:
+    """List every document linked to a collection (via the join table)."""
+
+    from agenticos_shared.models import CollectionDocument
+
+    rows = (
+        db.execute(
+            select(Document)
+            .join(CollectionDocument, CollectionDocument.document_id == Document.id)
+            .where(CollectionDocument.collection_id == collection_id)
+            .order_by(Document.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [_doc_out(d) for d in rows]
+
+
 # ---------------------------------------------------------------------------
 # Documents
 # ---------------------------------------------------------------------------
@@ -217,6 +284,8 @@ async def upload_document(
         blob=blob,
     )
     db.add(doc)
+    db.flush()
+    mirror_primary_collection(db, doc)
     db.commit()
 
     embedder = _embedder(settings, embed_alias)
@@ -257,6 +326,8 @@ async def ingest_text(
         blob=blob,
     )
     db.add(doc)
+    db.flush()
+    mirror_primary_collection(db, doc)
     db.commit()
 
     embedder = _embedder(settings, body.embed_alias)
@@ -309,6 +380,8 @@ async def upload_document_async(
         blob=blob,
     )
     db.add(doc)
+    db.flush()
+    mirror_primary_collection(db, doc)
     db.commit()
 
     s3_key = f"uploads/{doc.id}"
