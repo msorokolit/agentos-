@@ -125,7 +125,7 @@ def main() -> int:
         tool = r.json()
         print(f"   tool {tool['id']} ({tool['name']})")
 
-        _say("ensure chat model alias")
+        _say("ensure chat + embed model aliases")
         models = c.get(f"{base}/admin/models").json()
         chat_alias = next(
             (m["alias"] for m in models if m.get("kind") == "chat"),
@@ -145,6 +145,25 @@ def main() -> int:
             r.raise_for_status()
             chat_alias = r.json()["alias"]
         print(f"   chat alias = {chat_alias}")
+
+        embed_alias = next(
+            (m["alias"] for m in models if m.get("kind") == "embedding"),
+            None,
+        )
+        if embed_alias is None:
+            r = c.post(
+                f"{base}/admin/models",
+                json={
+                    "alias": "embed-default",
+                    "provider": "ollama",
+                    "endpoint": os.environ.get("OLLAMA_URL", "http://ollama:11434"),
+                    "model_name": os.environ.get("EMBED_MODEL", "nomic-embed-text"),
+                    "kind": "embedding",
+                },
+            )
+            r.raise_for_status()
+            embed_alias = r.json()["alias"]
+        print(f"   embed alias = {embed_alias}")
 
         _say("create agent")
         r = c.post(
