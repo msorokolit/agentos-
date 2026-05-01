@@ -74,9 +74,26 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             </>
           ) : (
-            <a href={api.loginUrl(typeof window !== "undefined" ? window.location.href : undefined)} style={button}>
-              Log in
-            </a>
+            <>
+              <a
+                href={api.devLoginUrl(
+                  "alice@agenticos.local",
+                  typeof window !== "undefined" ? window.location.href : undefined,
+                )}
+                style={buttonSecondary}
+                title="Dev-only password-less login (disabled in production)"
+              >
+                Dev login (alice)
+              </a>
+              <a
+                href={api.loginUrl(
+                  typeof window !== "undefined" ? window.location.href : undefined,
+                )}
+                style={button}
+              >
+                Log in
+              </a>
+            </>
           )}
         </div>
       </nav>

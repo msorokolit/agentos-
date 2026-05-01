@@ -230,6 +230,18 @@ export const api = {
     if (returnTo) u.searchParams.set("return_to", returnTo);
     return u.toString();
   },
+  /**
+   * Dev-only login that bypasses OIDC. The api-gateway accepts this only
+   * when ``AGENTICOS_ENV`` is ``development`` or ``test`` — production
+   * builds 404 the route. The UI exposes it as a fallback button so a
+   * fresh `make dev` clone can be used without standing up Keycloak.
+   */
+  devLoginUrl(email: string, returnTo?: string): string {
+    const u = new URL(`${API_URL}/api/v1/auth/dev/login`);
+    u.searchParams.set("email", email);
+    if (returnTo) u.searchParams.set("return_to", returnTo);
+    return u.toString();
+  },
   async logout(): Promise<void> {
     await http<void>("/api/v1/auth/logout", { method: "POST" });
   },

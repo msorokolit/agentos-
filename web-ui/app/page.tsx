@@ -65,6 +65,12 @@ export default function Home() {
             <code style={{ color: colors.fg }}>alice / alice</code>).
             You&apos;ll be auto-provisioned into the default tenant.
           </p>
+          <p style={{ color: colors.muted, marginTop: "0.75rem" }}>
+            No IdP yet? Use <strong>Dev login (alice)</strong> for a
+            password-less session against the seeded user. The route is
+            disabled outside <code style={{ color: colors.fg }}>development</code> /{" "}
+            <code style={{ color: colors.fg }}>test</code> environments.
+          </p>
         </div>
       )}
 

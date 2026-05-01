@@ -271,6 +271,75 @@ async def refresh(
     return r
 
 
+@router.get("/dev/login", response_model=None)
+async def dev_login(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
+    email: Annotated[str, Query()] = "alice@agenticos.local",
+    return_to: Annotated[str | None, Query(alias="return_to")] = None,
+):
+    """Dev-only password-less login.
+
+    Mints a session cookie for an existing seeded user. Refuses to run
+    unless ``AGENTICOS_ENV`` is one of {``development``, ``test``}, so
+    prod images can never expose it. Intended for local self-hosted
+    demos and CI smoke tests where Keycloak is overkill.
+    """
+
+    if settings.env not in ("development", "test"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            f"user {email!r} not found — run scripts.seed first",
+        )
+
+    user.last_login_at = datetime.now(tz=UTC)
+
+    now = int(time.time())
+    payload = SessionPayload(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        email=user.email,
+        display_name=user.display_name,
+        issued_at=now,
+        expires_at=now + settings.session_ttl_seconds,
+    )
+    token = encode_session(payload, secret=settings.secret_key)
+
+    target = return_to or settings.web_ui_url
+    r = RedirectResponse(url=target, status_code=302)
+    r.set_cookie(
+        settings.session_cookie_name,
+        token,
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+        max_age=settings.session_ttl_seconds,
+        path="/",
+    )
+    try:
+        await get_emitter().emit(
+            AuditEvent(
+                tenant_id=user.tenant_id,
+                actor_id=user.id,
+                actor_email=user.email,
+                action="auth.dev_login",
+                resource_type="user",
+                resource_id=str(user.id),
+                decision=Decision.ALLOW,
+                ip=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        )
+    except Exception:
+        pass
+    return r
+
+
 @router.post("/logout")
 async def logout(
     request: Request,
