@@ -211,6 +211,10 @@ Audit actions: `tool.create`, `tool.update`, `tool.delete`, `tool.invoke`.
 | DELETE | `/api/v1/workspaces/{id}/agents/{agent_id}` | `agent:delete` (admin+) |
 | POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/sessions` | `agent:read` |
 | POST   | `/api/v1/sessions` (top-level: ``{"agent_id":...}``) | derived from agent's workspace |
+| GET    | `/api/v1/agents/{agent_id}` (top-level) | `agent:read` on its workspace |
+| PATCH  | `/api/v1/agents/{agent_id}` (top-level) | `agent:write` on its workspace |
+| DELETE | `/api/v1/agents/{agent_id}` (top-level) | `agent:delete` on its workspace |
+| POST   | `/api/v1/agents/{agent_id}/run` (top-level) | `agent:read` on its workspace |
 | GET    | `/api/v1/workspaces/{id}/sessions/{session_id}/messages` | `agent:read` |
 | GET    | `/api/v1/sessions/{session_id}/messages` (top-level) | derived from session's workspace |
 | POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/run` | `agent:read` |

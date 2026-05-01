@@ -34,6 +34,134 @@ from ..settings import Settings, get_settings
 router = APIRouter(tags=["agents"])
 
 
+# ---------------------------------------------------------------------------
+# Top-level by-id helpers (PLAN §4: GET/PATCH/DELETE /agents/{id},
+# POST /agents/{id}/run). They resolve the workspace from the agent and
+# enforce membership inline; cross-tenant ids 404 without leaking
+# existence.
+# ---------------------------------------------------------------------------
+def _resolve_agent_or_404(*, agent_id: UUID, principal: Principal, db: DBSession) -> Agent:
+    a = db.get(Agent, agent_id)
+    if a is None:
+        raise NotFoundError("agent not found")
+    if a.workspace_id not in principal.workspace_ids and "superuser" not in principal.roles:
+        raise NotFoundError("agent not found")
+    return a
+
+
+def _require_role_for_agent(
+    *,
+    agent: Agent,
+    principal: Principal,
+    perm: str,
+    db: DBSession,
+) -> None:
+    """Inline RBAC for the top-level routes that don't have ``workspace_id``
+    in the path. Mirrors :func:`require_workspace_role` for the bound
+    workspace."""
+
+    from agenticos_shared.errors import ForbiddenError
+    from agenticos_shared.models import WorkspaceMember
+    from sqlalchemy import select as _select
+
+    from ..auth.deps import PERMISSIONS, ROLE_RANK
+
+    if "superuser" in principal.roles:
+        return
+    role = db.execute(
+        _select(WorkspaceMember.role).where(
+            WorkspaceMember.workspace_id == agent.workspace_id,
+            WorkspaceMember.user_id == principal.user_id,
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        # Don't differentiate "not a member" from "not found" at this layer.
+        raise NotFoundError("agent not found")
+    if ROLE_RANK.get(role, -1) < PERMISSIONS[perm]:
+        raise ForbiddenError(f"role '{role}' insufficient for '{perm}'")
+
+
+@router.get("/agents/{agent_id}")
+def get_agent_top_level(
+    agent_id: UUID,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """PLAN §4 ``GET /agents/{id}``: by-id lookup that doesn't require
+    a workspace_id in the path."""
+
+    a = _resolve_agent_or_404(agent_id=agent_id, principal=principal, db=db)
+    _require_role_for_agent(agent=a, principal=principal, perm="agent:read", db=db)
+    return _agent_out(a)
+
+
+@router.patch("/agents/{agent_id}")
+async def patch_agent_top_level(
+    agent_id: UUID,
+    body: dict,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """PLAN §4 ``PATCH /agents/{id}``: forwards into the workspace-
+    scoped handler so all the capability checks + version snapshots
+    + audit emit run identically."""
+
+    a = _resolve_agent_or_404(agent_id=agent_id, principal=principal, db=db)
+    _require_role_for_agent(agent=a, principal=principal, perm="agent:write", db=db)
+    # Reuse the existing workspace-scoped handler.
+    return await update_agent(
+        agent_id=agent_id,
+        body=body,
+        request=request,
+        ctx=(principal, a.workspace_id),
+        db=db,
+        settings=settings,
+    )
+
+
+@router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent_top_level(
+    agent_id: UUID,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    a = _resolve_agent_or_404(agent_id=agent_id, principal=principal, db=db)
+    _require_role_for_agent(agent=a, principal=principal, perm="agent:delete", db=db)
+    return await delete_agent(
+        agent_id=agent_id,
+        request=request,
+        ctx=(principal, a.workspace_id),
+        db=db,
+    )
+
+
+@router.post("/agents/{agent_id}/run")
+async def run_agent_top_level(
+    agent_id: UUID,
+    body: dict,
+    request: Request,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """PLAN §4 ``POST /agents/{id}/run``: convenience that doesn't
+    require a workspace_id in the path."""
+
+    a = _resolve_agent_or_404(agent_id=agent_id, principal=principal, db=db)
+    _require_role_for_agent(agent=a, principal=principal, perm="agent:read", db=db)
+    return await run_agent(
+        agent_id=agent_id,
+        body=body,
+        request=request,
+        ctx=(principal, a.workspace_id),
+        db=db,
+        settings=settings,
+    )
+
+
 def _sync_tool_bindings(db: DBSession, *, agent_id: UUID, tool_ids: list[str]) -> None:
     """Make ``tool_binding`` rows match the agent's ``tool_ids`` list."""
 
