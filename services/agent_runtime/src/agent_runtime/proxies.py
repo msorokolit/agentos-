@@ -30,6 +30,37 @@ class LLMProxy:
             raise ProxyError(f"llm-gateway {r.status_code}: {r.text[:300]}")
         return r.json()
 
+    async def chat_stream(self, payload: dict[str, Any]):
+        """Stream OpenAI-shaped chunks from the llm-gateway.
+
+        Yields decoded JSON dicts (one per ``data: ...`` line); stops on
+        ``data: [DONE]``. Re-raises transport errors as :class:`ProxyError`.
+        """
+
+        import json as _json
+
+        body = {**payload, "stream": True}
+        try:
+            async with (
+                httpx.AsyncClient(timeout=self.timeout) as c,
+                c.stream("POST", f"{self.base_url}/v1/chat/completions", json=body) as r,
+            ):
+                if r.status_code >= 400:
+                    text = (await r.aread()).decode("utf-8", "replace")
+                    raise ProxyError(f"llm-gateway {r.status_code}: {text[:300]}")
+                async for line in r.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload_str = line[len("data:") :].strip()
+                    if payload_str == "[DONE]":
+                        return
+                    try:
+                        yield _json.loads(payload_str)
+                    except _json.JSONDecodeError:
+                        continue
+        except httpx.HTTPError as exc:
+            raise ProxyError(f"llm-gateway stream error: {exc}") from exc
+
 
 class ToolProxy:
     def __init__(self, base_url: str, *, timeout: float = 60.0) -> None:

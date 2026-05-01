@@ -124,15 +124,30 @@ def client(app) -> TestClient:
 # Test stubs for proxies — used by both graph and route tests.
 # ---------------------------------------------------------------------------
 class StubLLM:
-    def __init__(self, responses=None):
+    def __init__(self, responses=None, *, stream_chunks=None):
         self.responses = list(responses or [])
+        # Each entry of ``stream_chunks`` is a list of OpenAI-shaped chunk
+        # dicts the stub will yield in order from ``chat_stream``. When
+        # the list is empty the stub falls back to ``chat`` so existing
+        # tests don't have to opt in.
+        self.stream_chunks = list(stream_chunks or [])
         self.calls = []
+        self.stream_calls = []
 
     async def chat(self, payload):
         self.calls.append(payload)
         if not self.responses:
             raise RuntimeError("no more stub responses")
         return self.responses.pop(0)
+
+    async def chat_stream(self, payload):
+        self.stream_calls.append(payload)
+        if not self.stream_chunks:
+            # No streaming chunks queued — yield nothing so the graph
+            # falls through to ``chat``.
+            return
+        for chunk in self.stream_chunks.pop(0):
+            yield chunk
 
 
 class StubTools:

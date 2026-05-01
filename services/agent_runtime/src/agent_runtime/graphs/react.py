@@ -176,6 +176,56 @@ async def run_react(
             if k in agent.config:
                 chat_payload[k] = agent.config[k]
 
+        # Stream the response when no tools are bound — the user sees
+        # token-level ``delta`` events as they arrive (PLAN §6 protocol).
+        # When tools are bound we still need the full assistant message
+        # in one piece to dispatch tool_calls, so we fall back to
+        # non-streaming.
+        streamed_text = ""
+        streamed_tool_calls: list[dict[str, Any]] = []
+        used_streaming = False
+        if not tool_descriptors and hasattr(llm, "chat_stream"):
+            try:
+                async for chunk in llm.chat_stream(chat_payload):
+                    used_streaming = True
+                    for ch in chunk.get("choices") or []:
+                        delta = ch.get("delta") or {}
+                        if delta.get("tool_calls"):
+                            streamed_tool_calls.extend(delta["tool_calls"])
+                        content = delta.get("content")
+                        if content:
+                            streamed_text += content
+                            yield StepEvent(
+                                type="delta",
+                                session_id=session_id,
+                                payload={"content": content},
+                            )
+            except Exception as exc:
+                yield StepEvent(
+                    type="error",
+                    session_id=session_id,
+                    payload={"message": str(exc)[:500], "iteration": iterations},
+                )
+                return
+
+        if used_streaming and not streamed_tool_calls:
+            try:
+                record_agent_step(node="plan", latency_s=time.monotonic() - node_t0)
+            except Exception:
+                pass
+            yield StepEvent(
+                type="final",
+                session_id=session_id,
+                payload={
+                    "content": streamed_text,
+                    "iterations": iterations,
+                    "tokens_in": total_in,
+                    "tokens_out": total_out,
+                    "citations": rag_hits,
+                },
+            )
+            return
+
         try:
             resp = await llm.chat(chat_payload)
         except Exception as exc:
@@ -208,11 +258,14 @@ async def run_react(
             except Exception:
                 pass
             final_text = msg.get("content") or ""
-            yield StepEvent(
-                type="delta",
-                session_id=session_id,
-                payload={"content": final_text},
-            )
+            # Single-shot delta for callers that didn't stream (tools-
+            # bound iterations or models that don't support SSE).
+            if final_text:
+                yield StepEvent(
+                    type="delta",
+                    session_id=session_id,
+                    payload={"content": final_text},
+                )
             yield StepEvent(
                 type="final",
                 session_id=session_id,
@@ -225,6 +278,18 @@ async def run_react(
                 },
             )
             return
+
+        # The model sometimes narrates ("I'll fetch the weather first…")
+        # in ``content`` alongside tool_calls. Surface that as a
+        # ``thoughts`` event (PLAN §5) so the UI can show a chain-of-
+        # thought trace without dumping the final answer prematurely.
+        thought_text = (msg.get("content") or "").strip()
+        if thought_text:
+            yield StepEvent(
+                type="thoughts",
+                session_id=session_id,
+                payload={"content": thought_text, "iteration": iterations},
+            )
 
         # Append the assistant message *with* tool_calls so the model sees them next round.
         assistant_msg: dict[str, Any] = {
