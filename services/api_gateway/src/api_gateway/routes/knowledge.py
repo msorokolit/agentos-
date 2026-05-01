@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 
 from ..audit_bus import get_emitter
 from ..auth.deps import current_principal, require_workspace_role
+from ..db import get_db
 from ..settings import Settings, get_settings
 
 router = APIRouter(tags=["knowledge"])
@@ -257,6 +258,108 @@ async def search_collection(
     payload = {
         **body,
         "workspace_id": str(ws_id),
+        "collection_id": str(collection_id),
+    }
+    _, out = await _proxy_json("POST", "/search", settings, json=payload)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Top-level by-id helpers (PLAN §4: ``GET /documents/{id}``,
+# ``POST /collections/{id}/search``). They resolve the workspace from
+# the resource and enforce membership inline so cross-tenant ids 404
+# without leaking existence.
+# ---------------------------------------------------------------------------
+from sqlalchemy.orm import Session  # noqa: E402
+
+from ..auth.deps import PERMISSIONS, ROLE_RANK  # noqa: E402
+
+
+def _ensure_workspace_perm(
+    *,
+    workspace_id: UUID,
+    principal: Principal,
+    perm: str,
+    db: Session,
+) -> None:
+    """Inline RBAC: caller must satisfy ``perm`` in ``workspace_id``."""
+
+    from agenticos_shared.errors import ForbiddenError
+    from agenticos_shared.errors import NotFoundError as _NotFound
+    from agenticos_shared.models import WorkspaceMember
+    from sqlalchemy import select as _select
+
+    if "superuser" in principal.roles:
+        return
+    role = db.execute(
+        _select(WorkspaceMember.role).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == principal.user_id,
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        raise _NotFound("not found")  # don't leak existence
+    if ROLE_RANK.get(role, -1) < PERMISSIONS[perm]:
+        raise ForbiddenError(f"role '{role}' insufficient for '{perm}'")
+
+
+@router.get("/documents/{document_id}")
+async def get_document_top_level(
+    document_id: UUID,
+    principal: Annotated[Principal, Depends(current_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """PLAN §4 ``GET /documents/{id}`` — by-id document fetch that
+    resolves the workspace from the row and enforces membership inline.
+    """
+
+    from agenticos_shared.errors import NotFoundError
+    from agenticos_shared.models import Document
+
+    doc = db.get(Document, document_id)
+    if doc is None:
+        raise NotFoundError("document not found")
+    if doc.workspace_id not in principal.workspace_ids and "superuser" not in principal.roles:
+        raise NotFoundError("document not found")
+    _ensure_workspace_perm(
+        workspace_id=doc.workspace_id,
+        principal=principal,
+        perm="document:read",
+        db=db,
+    )
+    _, body = await _proxy_json("GET", f"/documents/{document_id}", settings)
+    return body
+
+
+@router.post("/collections/{collection_id}/search")
+async def search_collection_top_level(
+    collection_id: UUID,
+    body: dict,
+    principal: Annotated[Principal, Depends(current_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """PLAN §4 ``POST /collections/{id}/search`` — top-level search
+    scoped to a collection, no workspace_id required in the path."""
+
+    from agenticos_shared.errors import NotFoundError
+    from agenticos_shared.models import Collection
+
+    coll = db.get(Collection, collection_id)
+    if coll is None:
+        raise NotFoundError("collection not found")
+    if coll.workspace_id not in principal.workspace_ids and "superuser" not in principal.roles:
+        raise NotFoundError("collection not found")
+    _ensure_workspace_perm(
+        workspace_id=coll.workspace_id,
+        principal=principal,
+        perm="document:read",
+        db=db,
+    )
+    payload = {
+        **body,
+        "workspace_id": str(coll.workspace_id),
         "collection_id": str(collection_id),
     }
     _, out = await _proxy_json("POST", "/search", settings, json=payload)
