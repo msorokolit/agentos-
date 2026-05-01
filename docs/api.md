@@ -131,6 +131,8 @@ All routes are workspace-scoped and require the standard RBAC permissions.
 | POST   | `/api/v1/workspaces/{id}/collections` | `document:write` (builder+) |
 | GET    | `/api/v1/workspaces/{id}/documents` | `document:read` |
 | POST   | `/api/v1/workspaces/{id}/documents` (multipart) | `document:write` |
+| POST   | `/api/v1/workspaces/{id}/documents?async_ingest=true` (multipart) ⇒ **202** + job_id | `document:write` |
+| GET    | `/api/v1/workspaces/{id}/documents/{doc_id}/status` | `document:read` |
 | DELETE | `/api/v1/workspaces/{id}/documents/{doc_id}` | `document:write` |
 | POST   | `/api/v1/workspaces/{id}/search` | `document:read` |
 

@@ -17,6 +17,7 @@ from agenticos_shared.app import make_app
 from agenticos_shared.db import init_engine
 from arq.connections import RedisSettings
 
+from .jobs.ingest_document import ingest_document
 from .jobs.ping import ping
 from .jobs.summarize_session import summarize_session
 from .settings import get_settings
@@ -37,7 +38,7 @@ class WorkerSettings:
     """arq WorkerSettings — discovered by ``arq`` CLI."""
 
     redis_settings: ClassVar[RedisSettings] = _redis_settings()
-    functions: ClassVar[list] = [ping, summarize_session]
+    functions: ClassVar[list] = [ping, summarize_session, ingest_document]
     max_jobs: ClassVar[int] = 4
     job_timeout: ClassVar[int] = 300
     on_startup = _on_startup

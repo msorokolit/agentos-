@@ -97,10 +97,7 @@ async def list_documents(
     return body
 
 
-@router.post(
-    "/workspaces/{workspace_id}/documents",
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/workspaces/{workspace_id}/documents")
 async def upload_document(
     workspace_id: UUID,
     request: Request,
@@ -110,6 +107,7 @@ async def upload_document(
     collection_id: UUID | None = Form(default=None),
     title: str | None = Form(default=None),
     embed_alias: str | None = Form(default=None),
+    async_ingest: bool = False,
 ):
     # RBAC manual check (Form params + path can't share workspace_role dep cleanly).
     from agenticos_shared.errors import ForbiddenError, NotFoundError
@@ -147,7 +145,10 @@ async def upload_document(
     if embed_alias is not None:
         data["embed_alias"] = embed_alias
 
-    url = f"{settings.knowledge_svc_url.rstrip('/')}/workspaces/{workspace_id}/documents"
+    suffix = "/async" if async_ingest else ""
+    url = (
+        f"{settings.knowledge_svc_url.rstrip('/')}" f"/workspaces/{workspace_id}/documents{suffix}"
+    )
     async with httpx.AsyncClient(timeout=300.0) as c:
         r = await c.post(url, files=files, data=data)
     if r.status_code >= 400:
@@ -177,10 +178,28 @@ async def upload_document(
                 "size_bytes": body.get("size_bytes"),
                 "mime": body.get("mime"),
                 "chunk_count": body.get("chunk_count"),
+                "async": async_ingest,
             },
             ip=request.client.host if request.client else None,
         )
     )
+    # Propagate the upstream 201 (sync) / 202 (async) so callers can
+    # decide whether to start polling /status.
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(content=body, status_code=r.status_code)
+
+
+@router.get("/workspaces/{workspace_id}/documents/{document_id}/status")
+async def document_status(
+    document_id: UUID,
+    ctx: Annotated[tuple[Principal, UUID], Depends(require_workspace_role("document:read"))],
+    settings: Annotated[Settings, Depends(get_settings)],
+):
+    """Polling endpoint for async ingestion progress (PLAN §4)."""
+
+    _, _ws_id = ctx
+    _, body = await _proxy_json("GET", f"/documents/{document_id}/status", settings)
     return body
 
 

@@ -18,6 +18,8 @@ dependencies = [
     "beautifulsoup4>=4.12,<5",
     "tiktoken>=0.7,<1",
     "markdown-it-py>=3,<4",
+    "arq>=0.26,<1",
+    "boto3>=1.34,<2",
 ]
 
 [project.optional-dependencies]

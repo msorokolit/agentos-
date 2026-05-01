@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 
 from .embedder import Embedder
 from .ingestion import ingest_document, make_document_row
+from .queue import enqueue
+from .s3 import upload_blob
 from .schemas import (
     CollectionCreate,
     CollectionOut,
@@ -170,6 +172,25 @@ def delete_document(
     db.delete(d)
 
 
+@router.get("/documents/{document_id}/status")
+def document_status(
+    document_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
+    """Polling endpoint for async ingestion progress (PLAN §4)."""
+
+    d = db.get(Document, document_id)
+    if d is None:
+        raise NotFoundError("document not found")
+    return {
+        "id": str(d.id),
+        "status": d.status,
+        "chunk_count": d.chunk_count,
+        "error": d.error,
+        "updated_at": d.updated_at.isoformat() if d.updated_at else None,
+    }
+
+
 @router.post(
     "/workspaces/{workspace_id}/documents",
     response_model=DocumentOut,
@@ -250,6 +271,76 @@ async def ingest_text(
     )
     db.refresh(doc)
     return _doc_out(doc)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/documents/async",
+    response_model=DocumentOut,
+)
+async def upload_document_async(
+    workspace_id: UUID,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    file: UploadFile = File(...),
+    collection_id: UUID | None = Form(default=None),
+    title: str | None = Form(default=None),
+    embed_alias: str | None = Form(default=None),
+) -> DocumentOut:
+    """Async ingestion (PLAN §4 ``POST /workspaces/{id}/documents`` ⇒ 202).
+
+    Persists the bytes to S3/MinIO, writes the ``document`` row in
+    ``status="pending"``, enqueues a worker job, and returns 202 with
+    the doc id. Clients poll
+    ``GET /documents/{id}/status`` until ``status="ready"``.
+
+    When the worker queue is unreachable we transparently fall back to
+    synchronous ingestion so dev mode without a worker still works.
+    """
+
+    blob = await file.read()
+    if not blob:
+        raise ValidationError("empty upload")
+
+    doc = make_document_row(
+        workspace_id=workspace_id,
+        collection_id=collection_id,
+        title=title or file.filename or "untitled",
+        mime=file.content_type,
+        blob=blob,
+    )
+    db.add(doc)
+    db.commit()
+
+    s3_key = f"uploads/{doc.id}"
+    upload_blob(bucket=settings.s3_bucket, key=s3_key, data=blob, settings=settings)
+
+    job_id = await enqueue(
+        "ingest_document",
+        str(doc.id),
+        s3_key=s3_key,
+        embed_alias=embed_alias,
+    )
+    from fastapi.responses import JSONResponse
+
+    if job_id is None:
+        # No worker available — degrade gracefully to inline ingestion.
+        embedder = _embedder(settings, embed_alias)
+        await ingest_document(
+            db,
+            document_id=doc.id,
+            blob=blob,
+            embedder=embedder,
+            chunk_size_tokens=settings.chunk_size_tokens,
+            chunk_overlap_tokens=settings.chunk_overlap_tokens,
+            max_chunks=settings.max_chunks_per_doc,
+        )
+        db.refresh(doc)
+        return JSONResponse(content=_doc_out(doc).model_dump(mode="json"), status_code=201)
+
+    doc.meta = {**(doc.meta or {}), "job_id": job_id, "s3_key": s3_key}
+    db.commit()
+    db.refresh(doc)
+    return JSONResponse(content=_doc_out(doc).model_dump(mode="json"), status_code=202)
 
 
 # ---------------------------------------------------------------------------

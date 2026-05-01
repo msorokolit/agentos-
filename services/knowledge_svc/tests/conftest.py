@@ -38,6 +38,8 @@ def _bind_db(db_engine, monkeypatch):
     sm = sessionmaker(bind=db_engine, autoflush=False, autocommit=False, future=True)
     monkeypatch.setattr(shared_db, "_engine", db_engine, raising=False)
     monkeypatch.setattr(shared_db, "_SessionLocal", sm, raising=False)
+    # Don't let the s3 helper try real network during tests.
+    monkeypatch.setenv("AGENTICOS_DISABLE_S3", "1")
 
 
 @pytest.fixture
