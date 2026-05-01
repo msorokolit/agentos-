@@ -57,7 +57,7 @@
 | **minio** | MinIO | S3-compatible object storage |
 | **keycloak** (dev) | Keycloak 25 | OIDC provider for local development |
 | **opa** | OPA 0.68 | Policy decisions |
-| **otel-collector / prometheus / grafana** | — | Observability |
+| **otel-collector / prometheus / grafana / loki / promtail** | — | Observability (traces · metrics · dashboards · logs) |
 
 ## 3. Repo layout
 
@@ -122,6 +122,7 @@ Default exposed ports:
 | opa            | 8181  |
 | prometheus     | 9090  |
 | grafana        | 3001  |
+| loki           | 3100  |
 
 ## 7. Milestones
 

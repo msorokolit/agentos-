@@ -153,6 +153,77 @@ jobs:
           AGENTICOS_PG_TEST_URL: postgresql+psycopg://agenticos:agenticos@localhost:5432/agenticos
         run: pytest tests/integration -q
 
+  images:
+    name: Build images (no push)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { pkg: api_gateway,   name: api-gateway,   module: api_gateway.main:app }
+          - { pkg: agent_runtime, name: agent-runtime, module: agent_runtime.main:app }
+          - { pkg: llm_gateway,   name: llm-gateway,   module: llm_gateway.main:app }
+          - { pkg: tool_registry, name: tool-registry, module: tool_registry.main:app }
+          - { pkg: knowledge_svc, name: knowledge-svc, module: knowledge_svc.main:app }
+          - { pkg: memory_svc,    name: memory-svc,    module: memory_svc.main:app }
+          - { pkg: worker,        name: worker,        module: worker.main:app }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.service.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: agenticos/${{ matrix.service.name }}:ci
+          build-args: |
+            SERVICE_PKG=${{ matrix.service.pkg }}
+            SERVICE_MODULE=${{ matrix.service.module }}
+      - name: Smoke test image (uvicorn boots, /healthz)
+        if: matrix.service.pkg != 'worker'
+        run: |
+          docker run -d --name ${{ matrix.service.name }} \
+            -e AGENTICOS_ENV=test \
+            -e AGENTICOS_SECRET_KEY=test-secret-32-bytes-or-more!!! \
+            -e DATABASE_URL=sqlite:///./tmp.db \
+            -p 18080:8080 \
+            -p 18081:8081 \
+            -p 18082:8082 \
+            -p 18083:8083 \
+            -p 18084:8084 \
+            -p 18085:8085 \
+            agenticos/${{ matrix.service.name }}:ci
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec ${{ matrix.service.name }} \
+              sh -c 'curl -fsS "http://127.0.0.1:${PORT:-8080}/healthz"' >/dev/null 2>&1; then
+              echo "healthz OK"
+              docker rm -f ${{ matrix.service.name }} >/dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs ${{ matrix.service.name }} || true
+          docker rm -f ${{ matrix.service.name }} >/dev/null || true
+          exit 1
+
+  web-ui-image:
+    name: Build web-ui image (no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: web-ui
+          file: web-ui/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: agenticos/web-ui:ci
+
   helm-validate:
     name: Helm chart lint + render
     runs-on: ubuntu-latest

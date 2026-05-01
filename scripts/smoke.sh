@@ -42,6 +42,7 @@ probe "keycloak" "http://localhost:8090/health/ready"
 probe "ollama"   "http://localhost:11434/"
 probe "opa"      "http://localhost:8181/health"
 probe "prom"     "http://localhost:9090/-/ready"
+probe "loki"     "http://localhost:3100/ready"
 
 if [ "$fail" -eq 0 ]; then
     echo

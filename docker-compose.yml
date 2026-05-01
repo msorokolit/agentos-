@@ -165,6 +165,28 @@ services:
       - ./deploy/compose/prometheus-alerts.yml:/etc/prometheus/alerts.yml:ro
     ports: ["9090:9090"]
 
+  loki:
+    image: grafana/loki:3.2.0
+    restart: unless-stopped
+    networks: [agenticos]
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./deploy/compose/loki-config.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports: ["3100:3100"]
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    restart: unless-stopped
+    networks: [agenticos]
+    depends_on:
+      loki: { condition: service_started }
+    command: ["-config.file=/etc/promtail/promtail.yaml"]
+    volumes:
+      - ./deploy/compose/promtail-config.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp
+
   grafana:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
@@ -300,6 +322,8 @@ volumes:
   nats-data:
   ollama-data:
   grafana-data:
+  loki-data:
+  promtail-positions:
 
 networks:
   agenticos:
