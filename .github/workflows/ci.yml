@@ -254,6 +254,99 @@ jobs:
           helm template agenticos deploy/helm/agenticos \
             -f deploy/helm/agenticos/values-prod.yaml > /tmp/prod.yaml
           test -s /tmp/prod.yaml
+      - run: helm lint deploy/helm/agenticos -f deploy/helm/agenticos/values-ci.yaml
+      - run: |
+          helm template agenticos deploy/helm/agenticos \
+            -f deploy/helm/agenticos/values-ci.yaml > /tmp/ci.yaml
+          test -s /tmp/ci.yaml
+
+  helm-kind-smoke:
+    name: Helm install on kind (smoke)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build images for kind
+        run: |
+          set -e
+          for s in api_gateway agent_runtime llm_gateway tool_registry knowledge_svc memory_svc worker; do
+            name="${s/_/-}"
+            docker build -f services/Dockerfile \
+              --build-arg "SERVICE_PKG=$s" \
+              --build-arg "SERVICE_MODULE=${s}.main:app" \
+              -t "agenticos/${name}:ci" .
+          done
+          docker build -f web-ui/Dockerfile -t agenticos/web-ui:ci web-ui
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.24.0
+          cluster_name: agenticos-ci
+
+      - name: Load images into kind
+        run: |
+          for img in \
+            agenticos/api-gateway:ci \
+            agenticos/agent-runtime:ci \
+            agenticos/llm-gateway:ci \
+            agenticos/tool-registry:ci \
+            agenticos/knowledge-svc:ci \
+            agenticos/memory-svc:ci \
+            agenticos/worker:ci \
+            agenticos/web-ui:ci ; do
+            kind load docker-image "$img" --name agenticos-ci
+          done
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.1
+
+      - name: Install AgenticOS
+        run: |
+          kubectl create ns agenticos
+          helm install agenticos ./deploy/helm/agenticos \
+            --namespace agenticos \
+            -f ./deploy/helm/agenticos/values-ci.yaml \
+            --wait --timeout 10m
+
+      - name: Wait for migration job
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            phase="$(kubectl -n agenticos get job -l app.kubernetes.io/name=migrate -o jsonpath='{.items[*].status.conditions[?(@.type=="Complete")].status}' || true)"
+            if [ "$phase" = "True" ]; then
+              break
+            fi
+            sleep 10
+          done
+          kubectl -n agenticos logs -l app.kubernetes.io/name=migrate --tail=200 || true
+
+      - name: Smoke /healthz on api-gateway
+        run: |
+          kubectl -n agenticos rollout status deploy/agenticos-api-gateway --timeout=5m
+          kubectl -n agenticos port-forward svc/agenticos-api-gateway 18080:8080 &
+          PF_PID=$!
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:18080/healthz; then
+              echo "OK"
+              kill "$PF_PID" || true
+              exit 0
+            fi
+            sleep 3
+          done
+          kill "$PF_PID" || true
+          kubectl -n agenticos get pods
+          kubectl -n agenticos describe pods | tail -200 || true
+          exit 1
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get all -A
+          kubectl -n agenticos describe pods
+          kubectl -n agenticos logs -l app.kubernetes.io/part-of=agenticos --tail=200 || true
 
   semgrep:
     name: Semgrep (security + best-practice rulesets)

@@ -210,7 +210,9 @@ Audit actions: `tool.create`, `tool.update`, `tool.delete`, `tool.invoke`.
 | PATCH  | `/api/v1/workspaces/{id}/agents/{agent_id}` | `agent:write` |
 | DELETE | `/api/v1/workspaces/{id}/agents/{agent_id}` | `agent:delete` (admin+) |
 | POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/sessions` | `agent:read` |
+| POST   | `/api/v1/sessions` (top-level: ``{"agent_id":...}``) | derived from agent's workspace |
 | GET    | `/api/v1/workspaces/{id}/sessions/{session_id}/messages` | `agent:read` |
+| GET    | `/api/v1/sessions/{session_id}/messages` (top-level) | derived from session's workspace |
 | POST   | `/api/v1/workspaces/{id}/agents/{agent_id}/run` | `agent:read` |
 | WS     | `/api/v1/chat/{agent_id}/ws` | session cookie or `?token=` |
 
@@ -255,6 +257,14 @@ Audit actions: `agent.create`, `agent.update`, `agent.delete`, `agent.run`.
 | Method | Path | Permission |
 |--------|------|------------|
 | GET | `/api/v1/workspaces/{id}/audit` | `admin:read` |
+| GET | `/api/v1/admin/health` | tenant admin |
+| GET | `/api/v1/admin/metrics` | tenant admin |
+
+`GET /admin/metrics` returns a roll-up of selected counters
+(`http_requests_total`, `tokens_total`, `llm_cost_usd_total`,
+`tool_invocations_total`, `policy_decisions_total`, `audit_events_total`,
+…) across every downstream service. Use Prometheus directly for
+histograms / per-label slices.
 
 Query params: `actor`, `action`, `decision`, `since`, `until`, `limit`,
 `offset`. Results are sorted descending by `created_at`.

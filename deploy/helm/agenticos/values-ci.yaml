@@ -1,0 +1,69 @@
+# Helm values used by the CI smoke job. Designed for kind:
+# - in-cluster Postgres + Redis + NATS + MinIO + OPA
+# - no ingress (use port-forward)
+# - no Ollama (we don't run inference in CI)
+# - no backups
+# - relaxed pod security so init scripts can write fs paths
+
+global:
+  image:
+    registry: agenticos
+    repository: ""              # no extra prefix; images are local
+    pullPolicy: IfNotPresent
+    tag: ci
+  storageClassName: ""
+
+env: test
+secretKey: change-me-32-bytes-or-more-please-rotate-now
+
+oidc:
+  issuer: http://idp.invalid/realms/agenticos
+  clientId: agenticos-web
+  clientSecret: dev-only
+
+minio:
+  enabled: true
+  documentTtlDays: 1
+  noncurrentTtlDays: 1
+  storage: 1Gi
+
+postgres:
+  external: false
+  storage: 1Gi
+  database: agenticos
+  user: agenticos
+  password: agenticos
+  url: postgresql+psycopg://agenticos:agenticos@agenticos-postgres:5432/agenticos
+
+redis:
+  storage: 1Gi
+
+ollama:
+  enabled: false
+
+opa:
+  enabled: true
+
+ingress:
+  enabled: false
+
+backup:
+  enabled: false
+
+services:
+  apiGateway:    { replicas: 1 }
+  llmGateway:    { replicas: 1 }
+  agentRuntime:  { replicas: 1 }
+  toolRegistry:  { replicas: 1 }
+  knowledgeSvc:  { replicas: 1 }
+  memorySvc:     { replicas: 1 }
+  worker:        { replicas: 1 }
+  webUi:         { replicas: 1 }
+
+# Loosen the read-only FS so init scripts (alembic, minio-init) can
+# write their state. Production keeps the strict default.
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]

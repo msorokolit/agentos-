@@ -555,6 +555,48 @@ def create_session(
     }
 
 
+@router.get("/sessions/{session_id}/messages")
+def list_session_messages_top_level(
+    session_id: UUID,
+    principal: Annotated[Principal, Depends(current_principal)],
+    db: Annotated[DBSession, Depends(get_db)],
+):
+    """Convenience top-level endpoint (PLAN §4 ``GET /sessions/{id}/messages``).
+
+    Resolves the workspace from the session and enforces ``agent:read``
+    on it inline (path doesn't carry workspace_id). 404s cleanly across
+    tenants without leaking existence.
+    """
+
+    s = db.get(Session, session_id)
+    if s is None:
+        raise NotFoundError("session not found")
+    if s.workspace_id not in principal.workspace_ids and "superuser" not in principal.roles:
+        raise NotFoundError("session not found")
+
+    rows = (
+        db.execute(
+            select(Message).where(Message.session_id == session_id).order_by(Message.created_at)
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "id": str(m.id),
+            "role": m.role,
+            "content": m.content,
+            "tool_call": m.tool_call,
+            "citations": list(m.citations or []),
+            "tokens_in": m.tokens_in,
+            "tokens_out": m.tokens_out,
+            "latency_ms": m.latency_ms,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in rows
+    ]
+
+
 @router.get(
     "/workspaces/{workspace_id}/sessions/{session_id}/messages",
 )

@@ -19,5 +19,9 @@ app.kubernetes.io/part-of: agenticos
 
 {{- define "agenticos.image" -}}
 {{- $g := .Values.global -}}
+{{- if $g.image.repository -}}
 {{- printf "%s/%s/%s:%s" $g.image.registry $g.image.repository .image $g.image.tag -}}
+{{- else -}}
+{{- printf "%s/%s:%s" $g.image.registry .image $g.image.tag -}}
+{{- end -}}
 {{- end -}}
