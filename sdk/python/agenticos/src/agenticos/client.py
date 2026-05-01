@@ -312,6 +312,68 @@ class AgenticOSClient:
         )
         return Session.model_validate(body)
 
+    # ---- top-level by-id helpers (PLAN §4) ----
+    def session(self, agent_id: UUID | str, *, title: str | None = None) -> Session:
+        """Top-level ``POST /api/v1/sessions``: resolves the workspace
+        from the agent."""
+
+        body: dict[str, Any] = {"agent_id": str(agent_id)}
+        if title is not None:
+            body["title"] = title
+        out = self._request("POST", "/api/v1/sessions", json=body)
+        return Session.model_validate(out)
+
+    def session_messages(self, session_id: UUID | str) -> list[Message]:
+        """Top-level ``GET /api/v1/sessions/{id}/messages``."""
+
+        rows = self._request("GET", f"/api/v1/sessions/{session_id}/messages")
+        return [Message.model_validate(r) for r in rows]
+
+    def get_agent(self, agent_id: UUID | str) -> Agent:
+        return Agent.model_validate(self._request("GET", f"/api/v1/agents/{agent_id}"))
+
+    def patch_agent(self, agent_id: UUID | str, body: dict[str, Any]) -> Agent:
+        return Agent.model_validate(self._request("PATCH", f"/api/v1/agents/{agent_id}", json=body))
+
+    def delete_agent_by_id(self, agent_id: UUID | str) -> None:
+        self._request("DELETE", f"/api/v1/agents/{agent_id}")
+
+    def run(
+        self,
+        agent_id: UUID | str,
+        *,
+        user_message: str,
+        session_id: UUID | str | None = None,
+    ) -> RunResult:
+        """Top-level ``POST /api/v1/agents/{id}/run``."""
+
+        payload: dict[str, Any] = {"user_message": user_message}
+        if session_id is not None:
+            payload["session_id"] = str(session_id)
+        return RunResult.model_validate(
+            self._request("POST", f"/api/v1/agents/{agent_id}/run", json=payload)
+        )
+
+    def get_document(self, document_id: UUID | str) -> Document:
+        return Document.model_validate(self._request("GET", f"/api/v1/documents/{document_id}"))
+
+    def collection_search(
+        self,
+        collection_id: UUID | str,
+        query: str,
+        *,
+        top_k: int = 8,
+    ) -> SearchResponse:
+        """Top-level ``POST /api/v1/collections/{id}/search``."""
+
+        return SearchResponse.model_validate(
+            self._request(
+                "POST",
+                f"/api/v1/collections/{collection_id}/search",
+                json={"query": query, "top_k": top_k},
+            )
+        )
+
     def end_session(self, workspace_id: UUID | str, session_id: UUID | str) -> dict[str, Any]:
         return self._request("POST", f"/api/v1/workspaces/{workspace_id}/sessions/{session_id}/end")
 
