@@ -49,6 +49,8 @@ def _row_to_out(row: ModelRow) -> ModelOut:
         capabilities=dict(row.capabilities or {}),
         default_params=dict(row.default_params or {}),
         enabled=row.enabled,
+        cost_per_1m_input_usd=float(row.cost_per_1m_input_usd or 0.0),
+        cost_per_1m_output_usd=float(row.cost_per_1m_output_usd or 0.0),
     )
 
 
@@ -75,6 +77,8 @@ async def create_model(body: ModelCreate, db: Annotated[Session, Depends(get_db)
         capabilities=body.capabilities,
         default_params=body.default_params,
         enabled=body.enabled,
+        cost_per_1m_input_usd=body.cost_per_1m_input_usd,
+        cost_per_1m_output_usd=body.cost_per_1m_output_usd,
     )
     db.add(row)
     try:

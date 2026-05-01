@@ -22,6 +22,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -177,6 +178,10 @@ class ModelRow(Base):
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     default_params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # USD per 1M tokens. ``0`` (the default) means "no cost tracked"
+    # which is the right answer for self-hosted Ollama / vLLM.
+    cost_per_1m_input_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    cost_per_1m_output_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -283,6 +288,7 @@ class TokenUsage(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True

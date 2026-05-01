@@ -58,6 +58,10 @@ class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    # Estimated USD cost for this single call (input + output combined),
+    # computed from the model's registered cost-per-1M rates. Returns
+    # ``0.0`` for models without rates (self-hosted Ollama / vLLM).
+    cost_usd: float = 0.0
 
 
 class ChatChoice(BaseModel):
@@ -134,6 +138,8 @@ class ModelCreate(BaseModel):
     capabilities: dict[str, Any] = Field(default_factory=dict)
     default_params: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    cost_per_1m_input_usd: float = 0.0
+    cost_per_1m_output_usd: float = 0.0
 
 
 class ModelUpdate(BaseModel):
@@ -142,6 +148,8 @@ class ModelUpdate(BaseModel):
     capabilities: dict[str, Any] | None = None
     default_params: dict[str, Any] | None = None
     enabled: bool | None = None
+    cost_per_1m_input_usd: float | None = None
+    cost_per_1m_output_usd: float | None = None
 
 
 class ModelOut(BaseModel):
@@ -154,6 +162,8 @@ class ModelOut(BaseModel):
     capabilities: dict[str, Any]
     default_params: dict[str, Any]
     enabled: bool
+    cost_per_1m_input_usd: float = 0.0
+    cost_per_1m_output_usd: float = 0.0
 
 
 class ModelTestResult(BaseModel):

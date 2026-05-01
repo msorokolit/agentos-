@@ -28,6 +28,15 @@ class ResolvedModel:
     capabilities: dict[str, Any]
     default_params: dict[str, Any]
     enabled: bool
+    cost_per_1m_input_usd: float = 0.0
+    cost_per_1m_output_usd: float = 0.0
+
+    def cost_for(self, *, prompt_tokens: int, completion_tokens: int) -> float:
+        """USD cost for ``(prompt + completion)`` tokens at this model's rate."""
+
+        return (prompt_tokens or 0) * (self.cost_per_1m_input_usd or 0) / 1_000_000.0 + (
+            completion_tokens or 0
+        ) * (self.cost_per_1m_output_usd or 0) / 1_000_000.0
 
 
 _cache: dict[str, ResolvedModel] = {}
@@ -56,6 +65,8 @@ def _row_to_resolved(row: ModelRow) -> ResolvedModel:
         capabilities=dict(row.capabilities or {}),
         default_params=dict(row.default_params or {}),
         enabled=row.enabled,
+        cost_per_1m_input_usd=float(row.cost_per_1m_input_usd or 0.0),
+        cost_per_1m_output_usd=float(row.cost_per_1m_output_usd or 0.0),
     )
 
 

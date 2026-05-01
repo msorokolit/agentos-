@@ -69,6 +69,12 @@ tokens_total = Counter(
     ["direction", "model", "workspace_id"],
     registry=REGISTRY,
 )
+llm_cost_usd_total = Counter(
+    "llm_cost_usd_total",
+    "Estimated USD cost of LLM calls (input + output, per registered rates).",
+    ["model", "workspace_id"],
+    registry=REGISTRY,
+)
 
 # ---------------------------------------------------------------------------
 # Tool registry
@@ -176,6 +182,7 @@ def record_llm_call(
     completion_tokens: int,
     workspace_id: str | None,
     timeout: bool = False,
+    cost_usd: float = 0.0,
 ) -> None:
     llm_request_latency_seconds.labels(
         provider=provider, model=model, alias=alias, kind=kind
@@ -187,6 +194,8 @@ def record_llm_call(
         tokens_total.labels(direction="in", model=alias, workspace_id=ws).inc(prompt_tokens)
     if completion_tokens:
         tokens_total.labels(direction="out", model=alias, workspace_id=ws).inc(completion_tokens)
+    if cost_usd > 0:
+        llm_cost_usd_total.labels(model=alias, workspace_id=ws).inc(cost_usd)
 
 
 def record_agent_step(*, node: str, latency_s: float) -> None:

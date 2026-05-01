@@ -111,6 +111,48 @@ jobs:
       - name: Validate docker-compose.yml
         run: docker compose -f docker-compose.yml config -q
 
+  postgres-integration:
+    name: Integration on real Postgres + pgvector
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: agenticos
+          POSTGRES_PASSWORD: agenticos
+          POSTGRES_DB: agenticos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agenticos -d agenticos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install services
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -e ./services/shared
+          for svc in api_gateway agent_runtime llm_gateway tool_registry knowledge_svc memory_svc worker; do
+            pip install -e ./services/$svc
+          done
+          pip install -r requirements-dev.txt
+
+      - name: Apply migrations against Postgres
+        env:
+          DATABASE_URL: postgresql+psycopg://agenticos:agenticos@localhost:5432/agenticos
+        run: alembic upgrade head
+
+      - name: Run integration suite against Postgres
+        env:
+          AGENTICOS_PG_TEST_URL: postgresql+psycopg://agenticos:agenticos@localhost:5432/agenticos
+        run: pytest tests/integration -q
+
   helm-validate:
     name: Helm chart lint + render
     runs-on: ubuntu-latest

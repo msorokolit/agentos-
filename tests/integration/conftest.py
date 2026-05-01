@@ -27,6 +27,24 @@ _lock = threading.Lock()
 
 @pytest.fixture
 def shared_engine():
+    """Use a real Postgres when ``AGENTICOS_PG_TEST_URL`` is set (the CI
+    integration job points it at the pgvector service container);
+    otherwise fall back to in-memory SQLite for fast local runs."""
+
+    import os
+
+    pg_url = os.environ.get("AGENTICOS_PG_TEST_URL")
+    if pg_url:
+        engine = create_engine(pg_url, future=True, pool_pre_ping=True)
+        # Reset state between tests so each starts on a clean slate.
+        # ``alembic upgrade head`` (run once in CI) created the tables.
+        with engine.begin() as conn:
+            for table in reversed(Base.metadata.sorted_tables):
+                conn.exec_driver_sql(f'TRUNCATE TABLE "{table.name}" RESTART IDENTITY CASCADE')
+        yield engine
+        engine.dispose()
+        return
+
     engine = create_engine(
         "sqlite:///:memory:",
         future=True,

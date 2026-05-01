@@ -49,6 +49,7 @@ def _record_usage(
     prompt: int,
     completion: int,
     latency_ms: int,
+    cost_usd: float = 0.0,
 ) -> None:
     db.add(
         TokenUsage(
@@ -61,6 +62,7 @@ def _record_usage(
             prompt_tokens=prompt,
             completion_tokens=completion,
             latency_ms=latency_ms,
+            cost_usd=cost_usd,
         )
     )
     db.commit()
@@ -106,6 +108,7 @@ async def chat_completions(
         usage = upstream.get("usage") or {}
         prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
         completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+        cost_usd = rm.cost_for(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
         await quota.add_tokens(
             body.workspace_id,
             prompt=prompt_tokens,
@@ -122,7 +125,9 @@ async def chat_completions(
             prompt=prompt_tokens,
             completion=completion_tokens,
             latency_ms=latency_ms,
+            cost_usd=cost_usd,
         )
+        upstream.setdefault("usage", {})["cost_usd"] = cost_usd
         record_llm_call(
             provider=rm.provider,
             alias=rm.alias,
@@ -132,6 +137,7 @@ async def chat_completions(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             workspace_id=str(body.workspace_id) if body.workspace_id else None,
+            cost_usd=cost_usd,
         )
         annotate_llm_call(
             provider=rm.provider,
@@ -218,6 +224,7 @@ async def embeddings(
     upstream["model"] = rm.alias
     usage = upstream.get("usage") or {}
     prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+    cost_usd = rm.cost_for(prompt_tokens=prompt_tokens, completion_tokens=0)
     await quota.add_tokens(body.workspace_id, prompt=prompt_tokens, completion=0)
     _record_usage(
         db,
@@ -230,7 +237,9 @@ async def embeddings(
         prompt=prompt_tokens,
         completion=0,
         latency_ms=latency_ms,
+        cost_usd=cost_usd,
     )
+    upstream.setdefault("usage", {})["cost_usd"] = cost_usd
     record_llm_call(
         provider=rm.provider,
         alias=rm.alias,
@@ -240,6 +249,7 @@ async def embeddings(
         prompt_tokens=prompt_tokens,
         completion_tokens=0,
         workspace_id=str(body.workspace_id) if body.workspace_id else None,
+        cost_usd=cost_usd,
     )
     annotate_llm_call(
         provider=rm.provider,
