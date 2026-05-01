@@ -164,11 +164,32 @@ See [`values.yaml`](../deploy/helm/agenticos/values.yaml) for the full surface.
 
 ---
 
-## Air-gapped (planned)
+## Air-gapped install
 
-`deploy/airgap/` will hold:
+Two scripts under [`deploy/airgap/`](../deploy/airgap/) implement
+PLAN §12.3:
 
-- `bundle.sh`  — pulls all images by digest into a tarball.
-- `install.sh` — loads images into a local registry, installs Helm chart from a local repo.
+- **`bundle.sh`** runs on a connected build host. It pulls every
+  service image (and optionally an Ollama model) by version, packages
+  the Helm chart and the default OPA Rego, writes a SHA-256 manifest,
+  and produces a single `agenticos-airgap-<version>.tar.zst` tarball.
+- **`install.sh`** runs on the air-gapped target. It verifies the
+  bundle's checksum, loads the images via `docker load`, retags + pushes
+  them into your internal registry, and `helm upgrade --install`s the
+  bundled chart pointing at that registry.
 
-(Scripts come in v1.5.)
+Quickstart:
+
+```bash
+# On the connected host:
+./deploy/airgap/bundle.sh -v 0.1.0 -o /tmp -m qwen2.5:1.5b-instruct
+# → /tmp/agenticos-airgap-0.1.0.tar.zst (~3-5 GB)
+
+# Copy the tarball + .sha256 onto the air-gapped network. Then:
+./deploy/airgap/install.sh /tmp/agenticos-airgap-0.1.0.tar.zst \
+    --registry registry.internal.example.com:5000 \
+    --values ./deploy/helm/agenticos/values-prod.yaml
+```
+
+The full reference (manifest layout, `--skip-push`, `--dry-run`, model
+bundling) is in [`deploy/airgap/README.md`](../deploy/airgap/README.md).

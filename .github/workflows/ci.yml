@@ -111,6 +111,20 @@ jobs:
       - name: Validate docker-compose.yml
         run: docker compose -f docker-compose.yml config -q
 
+  scripts-syntax:
+    name: Shell script syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n on every shipped script
+        run: |
+          set -e
+          for f in scripts/*.sh deploy/airgap/*.sh deploy/compose/*.sh; do
+            [ -f "$f" ] || continue
+            bash -n "$f"
+            echo "ok: $f"
+          done
+
   postgres-integration:
     name: Integration on real Postgres + pgvector
     runs-on: ubuntu-latest

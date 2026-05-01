@@ -138,6 +138,7 @@ See [`PLAN`](https://github.com/msorokolit/agentos-/blob/main/docs/architecture.
 | **5** | Agent runtime + ReAct streaming chat (WS, citations, tool calls) | ✅ done |
 | **6** | Helm chart + audit explorer + container hardening + helm CI | ✅ done |
 | **6.5** | Memory svc + rate-limit + problem+json + integration suite + demo + release.yml (cosign/SBOM/Trivy/Helm) | ✅ done |
+| **12.3** | Air-gapped bundle + install scripts | ✅ done |
 | 7 (v1.5) | Code sandbox, multi-agent, SAML/SCIM, evals, air-gapped bundler | — |
 
 ## 8. Security posture
