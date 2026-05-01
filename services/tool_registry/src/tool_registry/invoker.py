@@ -83,9 +83,15 @@ async def invoke_tool(
     t0 = time.monotonic()
     try:
         if row.kind == "builtin":
-            fn = BUILTINS.get(row.name)
+            # Resolve the underlying builtin from ``descriptor.builtin`` so
+            # operators can register the same builtin under a friendly name
+            # (e.g. ``web_get`` -> builtin ``http_get``). Fall back to the
+            # tool's name for backwards-compatibility with descriptors that
+            # didn't set ``builtin``.
+            target = (descriptor.get("builtin") or row.name).strip()
+            fn = BUILTINS.get(target)
             if fn is None:
-                raise NotFoundError(f"no built-in named '{row.name}'")
+                raise NotFoundError(f"no built-in named {target!r}")
             result = await fn(ctx, args)
         elif row.kind == "http":
             result = await invoke_http(descriptor, ctx=ctx, args=args)

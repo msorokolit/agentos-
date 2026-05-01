@@ -715,3 +715,9 @@ class AuditEventRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False, index=True
     )
+    # Hash chain over the audit log: ``event_hash = sha256(prev_hash ||
+    # canonical_event_json)``. Both columns are nullable so older rows
+    # written before the chain was introduced stay valid; the verifier
+    # treats a NULL ``event_hash`` as ``unknown``.
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    event_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

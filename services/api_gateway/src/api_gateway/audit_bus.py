@@ -12,10 +12,12 @@ from typing import Any
 
 import nats
 from agenticos_shared.audit import AuditEmitter, AuditEvent
+from agenticos_shared.audit_chain import GENESIS_HASH, compute_event_hash
 from agenticos_shared.db import session_scope
 from agenticos_shared.logging import get_logger
 from agenticos_shared.metrics import record_audit, record_audit_drop
 from agenticos_shared.models import AuditEventRow
+from sqlalchemy import select
 
 log = get_logger(__name__)
 
@@ -73,28 +75,42 @@ class GatewayAuditEmitter(AuditEmitter):
             record_audit(action=event.action, decision=event.decision.value)
         except Exception:
             pass
-        # Best-effort DB write.
+        # Best-effort DB write — chain it onto the previous row.
         try:
             with session_scope() as s:
-                s.add(
-                    AuditEventRow(
-                        id=event.id,
-                        tenant_id=event.tenant_id,
-                        workspace_id=event.workspace_id,
-                        actor_id=event.actor_id,
-                        actor_email=event.actor_email,
-                        action=event.action,
-                        resource_type=event.resource_type,
-                        resource_id=event.resource_id,
-                        request_id=event.request_id,
-                        ip=event.ip,
-                        user_agent=event.user_agent,
-                        decision=event.decision.value,
-                        reason=event.reason,
-                        payload=event.payload,
-                        created_at=event.created_at,
-                    )
+                # Take the latest row's event_hash as our prev_hash. The
+                # SELECT…FOR UPDATE is a soft lock; in dev we don't have
+                # multiple writers but it keeps the chain stable under
+                # concurrent emitters in production.
+                last_hash = s.execute(
+                    select(AuditEventRow.event_hash)
+                    .where(AuditEventRow.event_hash.is_not(None))
+                    .order_by(AuditEventRow.created_at.desc(), AuditEventRow.id.desc())
+                    .limit(1)
+                    .with_for_update(skip_locked=True)
+                ).scalar_one_or_none()
+                prev = last_hash or GENESIS_HASH
+
+                row = AuditEventRow(
+                    id=event.id,
+                    tenant_id=event.tenant_id,
+                    workspace_id=event.workspace_id,
+                    actor_id=event.actor_id,
+                    actor_email=event.actor_email,
+                    action=event.action,
+                    resource_type=event.resource_type,
+                    resource_id=event.resource_id,
+                    request_id=event.request_id,
+                    ip=event.ip,
+                    user_agent=event.user_agent,
+                    decision=event.decision.value,
+                    reason=event.reason,
+                    payload=event.payload,
+                    created_at=event.created_at,
+                    prev_hash=prev,
                 )
+                row.event_hash = compute_event_hash(row, prev_hash=prev)
+                s.add(row)
         except Exception as exc:  # pragma: no cover - defensive
             log.warning("audit_db_write_failed", error=str(exc))
             try:

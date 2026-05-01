@@ -9,13 +9,14 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
+from agenticos_shared.audit_chain import verify_chain
 from agenticos_shared.auth import Principal
 from agenticos_shared.models import AuditEventRow
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session as DBSession
 
-from ..auth.deps import require_workspace_role
+from ..auth.deps import require_admin, require_workspace_role
 from ..db import get_db
 
 router = APIRouter(tags=["audit"])
@@ -60,6 +61,10 @@ def list_audit(
         q = q.where(AuditEventRow.created_at <= upper)
 
     rows = db.execute(q).scalars().all()
+    return _serialise_rows(rows)
+
+
+def _serialise_rows(rows: list[AuditEventRow]) -> list[dict]:
     return [
         {
             "id": str(r.id),
@@ -76,6 +81,32 @@ def list_audit(
             "request_id": r.request_id,
             "payload": dict(r.payload or {}),
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            "prev_hash": r.prev_hash,
+            "event_hash": r.event_hash,
         }
         for r in rows
     ]
+
+
+@router.get("/admin/audit/verify")
+def verify_audit_chain(
+    _principal: Annotated[Principal, Depends(require_admin)],
+    db: Annotated[DBSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=100_000)] = 10_000,
+) -> dict:
+    """Walk the audit-event hash chain and report tamper status.
+
+    Reads up to ``limit`` rows in chronological order and recomputes
+    each ``event_hash`` from the row's canonical fields plus the
+    previous row's stored ``event_hash``. Any mismatch is reported in
+    ``broken``; rows older than the chain (NULL hashes) are skipped.
+    """
+
+    rows = (
+        db.execute(
+            select(AuditEventRow).order_by(AuditEventRow.created_at, AuditEventRow.id).limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+    return verify_chain(list(rows))
